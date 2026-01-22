@@ -43,6 +43,8 @@ library(modulr)
               value = "AAPL MSFT AMZN GOOGL NVDA",
               rows = 3
             ),
+            checkboxInput("use_aliases", "Aide tickers CH (alias .SW)", TRUE),
+            helpText("Ex: ABBN → ABBN.SW, NOVARTIS → NOVN.SW, UBS → UBSG.SW, NESTLE → NESN.SW"),
             dateRangeInput(
               "dates", "Période",
               start = Sys.Date() - 365 * 3,
@@ -152,8 +154,7 @@ library(modulr)
             # ------------------------------------------------------------------
             incProgress(0.05, detail = "Parsing tickers")
             
-            tks <- unlist(strsplit(input$tickers, "[,;[:space:]]+"))
-            tks <- unique(toupper(tks[nzchar(tks)]))
+            tks <- Core$normalize_tickers(input$tickers, use_aliases = input$use_aliases)
             
             validate(need(
               length(tks) >= 2,

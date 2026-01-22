@@ -22,10 +22,48 @@ library(modulr)
     # parse_tickers : découpe une chaîne de tickers séparés par espaces/virgules
     # --------------------------------------------------------------------------
     parse_tickers <- function(x) {
-      t <- unlist(strsplit(x, "[,;\\s]+"))
-      t <- t[nchar(t) > 0]
+      x <- paste(x, collapse = " ")
+      t <- unlist(strsplit(x, "[,;[:space:]]+"))
+      t <- t[nzchar(t)]
       unique(toupper(t))
     }
+    
+    normalize_tickers <- function(x, use_aliases = TRUE) {
+      tks <- parse_tickers(x)
+      
+      if (isTRUE(use_aliases)) {
+        # Aliases simples (tu peux étendre plus tard)
+        map <- c(
+          "ABBN"     = "ABBN.SW",
+          "ABB"      = "ABBN.SW",
+          "NOVARTIS" = "NOVN.SW",
+          "NOVN"     = "NOVN.SW",
+          "UBS"      = "UBSG.SW",
+          "UBSN"     = "UBSG.SW",
+          "UBSG"     = "UBSG.SW",
+          "NESTLE"   = "NESN.SW",
+          "NESN"     = "NESN.SW",
+          "ROCHE"    = "ROG.SW",
+          "ROG"      = "ROG.SW",
+          "RICHEMONT"= "CFR.SW",
+          "CFR"      = "CFR.SW",
+          "SWISSCOM" = "SCMN.SW",
+          "SCMN"     = "SCMN.SW",
+          "ZURICH"   = "ZURN.SW",
+          "ZURN"     = "ZURN.SW",
+          "SWISSRE"  = "SREN.SW",
+          "SREN"     = "SREN.SW",
+          "LONZA"    = "LONN.SW",
+          "LONN"     = "LONN.SW"
+        )
+        
+        tks <- ifelse(tks %in% names(map), unname(map[tks]), tks)
+        tks <- unique(toupper(tks))
+      }
+      
+      tks
+    }
+    
     
     # --------------------------------------------------------------------------
     # get_prices_yahoo : télécharge les prix ajustés depuis Yahoo Finance
@@ -165,6 +203,7 @@ library(modulr)
     # -------------------------------------------------------------------------
     list(
       parse_tickers      = parse_tickers,
+      normalize_tickers = normalize_tickers,
       get_prices_yahoo   = get_prices_yahoo,
       calc_log_returns   = calc_log_returns,
       estimate_mu_sigma  = estimate_mu_sigma,
