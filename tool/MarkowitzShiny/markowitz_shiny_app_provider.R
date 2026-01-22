@@ -52,6 +52,13 @@ library(modulr)
               "capital", "Capital total (CHF)",
               value = 10000, min = 0
             ),
+            radioButtons(
+              "rounding_mode",
+              "Conversion en actions",
+              choices = c("Floor (simple)" = "floor", "Floor + optimisation cash" = "greedy"),
+              selected = "greedy",
+              inline = TRUE
+            ),
             numericInput(
               "rf", "Taux sans risque annuel (ex: 0.02)",
               value = 0.02, step = 0.005
@@ -366,24 +373,77 @@ library(modulr)
       # ========================================================================
       # HELPER : construit la table d'allocation pour un vecteur de poids
       # ========================================================================
+      greedy_fill_cash <- function(df, cash_left) {
+        # df doit contenir: Ticker, Prix, Shares, Poids (num), Montant_cible (num)
+        # Objectif: ajouter des shares tant que cash permet,
+        # en privilégiant le titre le plus sous-pondéré (vs cible)
+        
+        # sécurité
+        if (!is.finite(cash_left) || cash_left <= 0) return(df)
+        
+        # boucle avec garde-fou
+        guard <- 0
+        while (cash_left > 0 && guard < 10000) {
+          guard <- guard + 1
+          
+          # titres achetables
+          buyable <- which(df$Prix <= cash_left & is.finite(df$Prix) & df$Prix > 0)
+          if (length(buyable) == 0) break
+          
+          # poids actuel vs cible
+          invested_now <- sum(df$Shares * df$Prix, na.rm = TRUE)
+          if (!is.finite(invested_now) || invested_now <= 0) {
+            # si rien investi, on prend le moins cher achetable
+            j <- buyable[which.min(df$Prix[buyable])]
+          } else {
+            w_cur <- (df$Shares * df$Prix) / invested_now
+            gap <- df$Poids - w_cur           # positif = sous-pondéré
+            gap[!is.finite(gap)] <- -Inf
+            gap[-buyable] <- -Inf             # pas achetable => interdit
+            
+            j <- which.max(gap)
+            if (!is.finite(gap[j]) || gap[j] == -Inf) {
+              # fallback: moins cher achetable
+              j <- buyable[which.min(df$Prix[buyable])]
+            }
+          }
+          
+          # acheter 1 action du titre j
+          df$Shares[j] <- df$Shares[j] + 1
+          cash_left <- cash_left - df$Prix[j]
+        }
+        
+        df
+      }
+      
       build_orders_table <- function(w, px_last) {
         cap <- input$capital
         
         df <- tibble::tibble(
           Ticker = rv$tickers,
-          Poids = w,
+          Poids = as.numeric(w),
           Prix = as.numeric(px_last[rv$tickers]),
-          Montant_cible = w * cap
+          Montant_cible = as.numeric(w) * cap
         )
         
         df <- df %>%
           dplyr::mutate(
             Shares = floor(Montant_cible / Prix),
-            Montant_investi = Shares * Prix
+            Shares = ifelse(is.finite(Shares) & Shares >= 0, Shares, 0)
           )
         
-        cash_left <- cap - sum(df$Montant_investi, na.rm = TRUE)
+        invested0 <- sum(df$Shares * df$Prix, na.rm = TRUE)
+        cash_left <- cap - invested0
+        
+        if (identical(input$rounding_mode, "greedy")) {
+          df <- greedy_fill_cash(df, cash_left)
+        }
+        
+        df <- df %>%
+          dplyr::mutate(Montant_investi = Shares * Prix)
+        
         invested <- sum(df$Montant_investi, na.rm = TRUE)
+        cash_left2 <- cap - invested
         
         df_disp <- df %>%
           dplyr::mutate(
@@ -394,8 +454,9 @@ library(modulr)
           ) %>%
           dplyr::select(Ticker, Poids, Prix, Shares, Montant_cible, Montant_investi)
         
-        list(table = df_disp, cash_left = cash_left, invested = invested)
+        list(table = df_disp, cash_left = cash_left2, invested = invested)
       }
+      
       
       build_alloc_table <- function(w) {
         cap <- input$capital
