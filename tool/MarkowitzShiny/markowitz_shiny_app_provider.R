@@ -27,7 +27,7 @@ library(modulr)
     # UI
     # ==========================================================================
     ui <- page_navbar(
-      title = "Markowitz Shiny (V1)",
+      title = "Markowitz Shiny (V2)",
       theme = bs_theme(version = 5, bootswatch = "flatly"),
       
       nav_panel(
@@ -89,7 +89,14 @@ library(modulr)
               tableOutput("tab_tan"),
               hr(),
               h5("Portefeuille sélectionné"),
-              tableOutput("tab_sel")
+              tableOutput("tab_sel"),
+              hr(),
+              h5("Ordres (actions entières)"),
+              h6("Tangent"),
+              tableOutput("orders_tan"),
+              h6("Sélection"),
+              tableOutput("orders_sel"),
+              uiOutput("cash_box")
             )
           )
         )
@@ -109,7 +116,8 @@ library(modulr)
         tickers  = NULL,   # vecteur de noms de tickers
         W        = NULL,   # matrice des poids (n_points x n_tickers)
         tan_idx  = NULL,   # indice du portefeuille tangent
-        mvp_idx  = NULL    # indice du portefeuille variance minimale
+        mvp_idx  = NULL,    # indice du portefeuille variance minimale
+        px_last = NULL
       )
       
       # ------------------------------------------------------------------------
@@ -162,7 +170,10 @@ library(modulr)
             # ------------------------------------------------------------------
             incProgress(0.30, detail = "Téléchargement prix (Yahoo)")
             px <- Core$get_prices_yahoo(tks, from = input$dates[1], to = input$dates[2])
+            px_last <- as.numeric(xts::last(px))
+            names(px_last) <- colnames(px)
             
+            rv$px_last <- px_last
             # ------------------------------------------------------------------
             # 3) Calcule les log-rendements et estime μ / Σ
             # ------------------------------------------------------------------
@@ -302,7 +313,7 @@ library(modulr)
           geom_path(
             data = df_efficient,
             aes(x = vol, y = ret),
-            color = "steelblue", linewidth = 1.2
+            color = "steelblue", size = 1.2
           ) +
           geom_point(
             data = df_efficient,
@@ -355,6 +366,37 @@ library(modulr)
       # ========================================================================
       # HELPER : construit la table d'allocation pour un vecteur de poids
       # ========================================================================
+      build_orders_table <- function(w, px_last) {
+        cap <- input$capital
+        
+        df <- tibble::tibble(
+          Ticker = rv$tickers,
+          Poids = w,
+          Prix = as.numeric(px_last[rv$tickers]),
+          Montant_cible = w * cap
+        )
+        
+        df <- df %>%
+          dplyr::mutate(
+            Shares = floor(Montant_cible / Prix),
+            Montant_investi = Shares * Prix
+          )
+        
+        cash_left <- cap - sum(df$Montant_investi, na.rm = TRUE)
+        invested <- sum(df$Montant_investi, na.rm = TRUE)
+        
+        df_disp <- df %>%
+          dplyr::mutate(
+            Poids = scales::percent(Poids, accuracy = 0.01),
+            Prix = round(Prix, 2),
+            Montant_cible = scales::dollar(Montant_cible, accuracy = 0.01),
+            Montant_investi = scales::dollar(Montant_investi, accuracy = 0.01)
+          ) %>%
+          dplyr::select(Ticker, Poids, Prix, Shares, Montant_cible, Montant_investi)
+        
+        list(table = df_disp, cash_left = cash_left, invested = invested)
+      }
+      
       build_alloc_table <- function(w) {
         cap <- input$capital
         tibble::tibble(
@@ -432,6 +474,43 @@ library(modulr)
               mk_row("▲ Sélection", sel, "darkorange")
             )
           )
+        )
+      })
+      
+      # ========================================================================
+      # OUTPUT : Ordres + cash
+      # ========================================================================
+      output$orders_tan <- renderTable({
+        req(rv$W, rv$tan_idx, rv$tickers, rv$px_last)
+        w <- as.numeric(rv$W[rv$tan_idx, ])
+        res <- build_orders_table(w, rv$px_last)
+        res$table
+      })
+      
+      output$orders_sel <- renderTable({
+        req(rv$W, rv$tickers, rv$px_last, input$pick_idx)
+        n <- nrow(rv$W)
+        sel_i <- clamp_idx(input$pick_idx, n)
+        w <- as.numeric(rv$W[sel_i, ])
+        res <- build_orders_table(w, rv$px_last)
+        res$table
+      })
+      
+      output$cash_box <- renderUI({
+        req(rv$W, rv$tickers, rv$px_last, input$pick_idx)
+        n <- nrow(rv$W)
+        sel_i <- clamp_idx(input$pick_idx, n)
+        w <- as.numeric(rv$W[sel_i, ])
+        res <- build_orders_table(w, rv$px_last)
+        
+        cap <- input$capital
+        pct_inv <- if (cap > 0) res$invested / cap else NA_real_
+        
+        tags$div(
+          class = "mt-2",
+          tags$div(tags$strong("Investi (sélection): "), scales::dollar(res$invested, accuracy = 0.01)),
+          tags$div(tags$strong("Cash restant: "), scales::dollar(res$cash_left, accuracy = 0.01)),
+          tags$div(tags$strong("% investi: "), scales::percent(pct_inv, accuracy = 0.01))
         )
       })
       
