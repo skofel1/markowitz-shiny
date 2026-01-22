@@ -273,6 +273,123 @@ library(modulr)
     # --------------------------------------------------------------------------
     pick_tangency <- function(frontier) which.max(frontier$sharpe)
     
+    # --------------------------------------------------------------------------
+    # V6: build_constcor_target
+    # Construit une matrice-cible à corrélation constante (stable).
+    # --------------------------------------------------------------------------
+    build_constcor_target <- function(Sigma) {
+      n <- ncol(Sigma)
+      sdv <- sqrt(diag(Sigma))
+      sdv[!is.finite(sdv)] <- 0
+      
+      # Corrélations
+      R <- cov2cor(Sigma)
+      rho <- R[upper.tri(R)]
+      rho <- rho[is.finite(rho)]
+      
+      # moyenne des corrélations (fallback 0 si NaN)
+      avg_rho <- if (length(rho) > 0) mean(rho) else 0
+      avg_rho <- max(min(avg_rho, 0.99), -0.99)
+      
+      R_target <- matrix(avg_rho, n, n)
+      diag(R_target) <- 1
+      
+      # Σ_target = D * R_target * D
+      Sigma_target <- (sdv %o% sdv) * R_target
+      Sigma_target
+    }
+    
+    # --------------------------------------------------------------------------
+    # V6: shrink_covariance
+    # Shrinkage simple : Σ_shrunk = (1-λ)Σ + λΣ_target
+    # method:
+    #  - none     : pas de shrink
+    #  - diag     : shrink vers diag(diag(Σ))
+    #  - constcor : shrink vers corrélation constante
+    # --------------------------------------------------------------------------
+    shrink_covariance <- function(Sigma, method = c("none","diag","constcor"), lambda = 0.2) {
+      method <- match.arg(method)
+      lambda <- as.numeric(lambda)
+      if (!is.finite(lambda)) lambda <- 0
+      lambda <- max(min(lambda, 1), 0)
+      
+      if (method == "none" || lambda == 0) {
+        return(as.matrix(nearPD(Sigma)$mat))
+      }
+      
+      if (method == "diag") {
+        Sigma_target <- diag(diag(Sigma))
+      } else if (method == "constcor") {
+        Sigma_target <- build_constcor_target(Sigma)
+      } else {
+        Sigma_target <- diag(diag(Sigma))
+      }
+      
+      Sigma_shrunk <- (1 - lambda) * Sigma + lambda * Sigma_target
+      
+      # stabilité numérique
+      Sigma_shrunk <- as.matrix(nearPD(Sigma_shrunk)$mat)
+      Sigma_shrunk
+    }
+    # --------------------------------------------------------------------------
+    # V6: build_constcor_target
+    # Construit une matrice-cible à corrélation constante (stable).
+    # --------------------------------------------------------------------------
+    build_constcor_target <- function(Sigma) {
+      n <- ncol(Sigma)
+      sdv <- sqrt(diag(Sigma))
+      sdv[!is.finite(sdv)] <- 0
+      
+      # Corrélations
+      R <- cov2cor(Sigma)
+      rho <- R[upper.tri(R)]
+      rho <- rho[is.finite(rho)]
+      
+      # moyenne des corrélations (fallback 0 si NaN)
+      avg_rho <- if (length(rho) > 0) mean(rho) else 0
+      avg_rho <- max(min(avg_rho, 0.99), -0.99)
+      
+      R_target <- matrix(avg_rho, n, n)
+      diag(R_target) <- 1
+      
+      # Σ_target = D * R_target * D
+      Sigma_target <- (sdv %o% sdv) * R_target
+      Sigma_target
+    }
+    
+    # --------------------------------------------------------------------------
+    # V6: shrink_covariance
+    # Shrinkage simple : Σ_shrunk = (1-λ)Σ + λΣ_target
+    # method:
+    #  - none     : pas de shrink
+    #  - diag     : shrink vers diag(diag(Σ))
+    #  - constcor : shrink vers corrélation constante
+    # --------------------------------------------------------------------------
+    shrink_covariance <- function(Sigma, method = c("none","diag","constcor"), lambda = 0.2) {
+      method <- match.arg(method)
+      lambda <- as.numeric(lambda)
+      if (!is.finite(lambda)) lambda <- 0
+      lambda <- max(min(lambda, 1), 0)
+      
+      if (method == "none" || lambda == 0) {
+        return(as.matrix(nearPD(Sigma)$mat))
+      }
+      
+      if (method == "diag") {
+        Sigma_target <- diag(diag(Sigma))
+      } else if (method == "constcor") {
+        Sigma_target <- build_constcor_target(Sigma)
+      } else {
+        Sigma_target <- diag(diag(Sigma))
+      }
+      
+      Sigma_shrunk <- (1 - lambda) * Sigma + lambda * Sigma_target
+      
+      # stabilité numérique
+      Sigma_shrunk <- as.matrix(nearPD(Sigma_shrunk)$mat)
+      Sigma_shrunk
+    }
+    
     # -------------------------------------------------------------------------
     # EXPORT : liste des fonctions publiques du module
     # -------------------------------------------------------------------------
@@ -282,11 +399,13 @@ library(modulr)
       get_prices_yahoo          = get_prices_yahoo,
       get_ticker_currency_yahoo = get_ticker_currency_yahoo,
       get_fx_series             = get_fx_series,
-      convert_prices_to_base     = convert_prices_to_base,
+      convert_prices_to_base    = convert_prices_to_base,
       calc_log_returns          = calc_log_returns,
       estimate_mu_sigma         = estimate_mu_sigma,
       compute_frontier          = compute_frontier,
-      pick_tangency             = pick_tangency
+      pick_tangency             = pick_tangency,
+      build_constcor_target     = build_constcor_target,
+      shrink_covariance         = shrink_covariance
     )
   }
 }
