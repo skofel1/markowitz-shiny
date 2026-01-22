@@ -4,7 +4,6 @@ library(modulr)
   
   # ============================================================================
   # DÉPENDANCES
-  
   # ============================================================================
   library(quantmod)
   library(PerformanceAnalytics)
@@ -28,33 +27,35 @@ library(modulr)
       unique(toupper(t))
     }
     
+    # --------------------------------------------------------------------------
+    # normalize_tickers : applique des alias (notamment CH -> .SW)
+    # --------------------------------------------------------------------------
     normalize_tickers <- function(x, use_aliases = TRUE) {
       tks <- parse_tickers(x)
       
       if (isTRUE(use_aliases)) {
-        # Aliases simples (tu peux étendre plus tard)
         map <- c(
-          "ABBN"     = "ABBN.SW",
-          "ABB"      = "ABBN.SW",
-          "NOVARTIS" = "NOVN.SW",
-          "NOVN"     = "NOVN.SW",
-          "UBS"      = "UBSG.SW",
-          "UBSN"     = "UBSG.SW",
-          "UBSG"     = "UBSG.SW",
-          "NESTLE"   = "NESN.SW",
-          "NESN"     = "NESN.SW",
-          "ROCHE"    = "ROG.SW",
-          "ROG"      = "ROG.SW",
-          "RICHEMONT"= "CFR.SW",
-          "CFR"      = "CFR.SW",
-          "SWISSCOM" = "SCMN.SW",
-          "SCMN"     = "SCMN.SW",
-          "ZURICH"   = "ZURN.SW",
-          "ZURN"     = "ZURN.SW",
-          "SWISSRE"  = "SREN.SW",
-          "SREN"     = "SREN.SW",
-          "LONZA"    = "LONN.SW",
-          "LONN"     = "LONN.SW"
+          "ABBN"      = "ABBN.SW",
+          "ABB"       = "ABBN.SW",
+          "NOVARTIS"  = "NOVN.SW",
+          "NOVN"      = "NOVN.SW",
+          "UBS"       = "UBSG.SW",
+          "UBSN"      = "UBSG.SW",
+          "UBSG"      = "UBSG.SW",
+          "NESTLE"    = "NESN.SW",
+          "NESN"      = "NESN.SW",
+          "ROCHE"     = "ROG.SW",
+          "ROG"       = "ROG.SW",
+          "RICHEMONT" = "CFR.SW",
+          "CFR"       = "CFR.SW",
+          "SWISSCOM"  = "SCMN.SW",
+          "SCMN"      = "SCMN.SW",
+          "ZURICH"    = "ZURN.SW",
+          "ZURN"      = "ZURN.SW",
+          "SWISSRE"   = "SREN.SW",
+          "SREN"      = "SREN.SW",
+          "LONZA"     = "LONN.SW",
+          "LONN"      = "LONN.SW"
         )
         
         tks <- ifelse(tks %in% names(map), unname(map[tks]), tks)
@@ -64,7 +65,6 @@ library(modulr)
       tks
     }
     
-    
     # --------------------------------------------------------------------------
     # get_prices_yahoo : télécharge les prix ajustés depuis Yahoo Finance
     # Retourne un objet xts avec une colonne par ticker valide.
@@ -72,29 +72,127 @@ library(modulr)
     get_prices_yahoo <- function(tickers, from, to) {
       lst <- lapply(tickers, function(tk) {
         tryCatch({
-          # Télécharge les données OHLCV + ajusté
           x <- suppressWarnings(
             getSymbols(tk, src = "yahoo", from = from, to = to, auto.assign = FALSE)
           )
-          # On ne garde que le prix ajusté (dividendes + splits)
           Ad(x)
         }, error = function(e) NULL)
       })
       names(lst) <- tickers
       
-      # Retire les tickers qui ont échoué (NULL)
       lst <- lst[!vapply(lst, is.null, logical(1))]
       if (length(lst) < 2) stop("Min 2 tickers valides requis (Yahoo).")
       
-      # Fusionne toutes les séries ; all=FALSE => intersection des dates
       px <- do.call(merge, c(lst, all = FALSE))
       colnames(px) <- names(lst)
       px
     }
     
     # --------------------------------------------------------------------------
+    # V5: get_ticker_currency_yahoo
+    # Récupère la devise "Currency" par ticker via getQuote().
+    # --------------------------------------------------------------------------
+    get_ticker_currency_yahoo <- function(tickers) {
+      out <- stats::setNames(rep(NA_character_, length(tickers)), tickers)
+      
+      q <- tryCatch(
+        getQuote(tickers, src = "yahoo", what = yahooQF("Currency")),
+        error = function(e) NULL
+      )
+      if (is.null(q) || nrow(q) == 0) return(out)
+      
+      # Selon version, la colonne peut s'appeler "Currency" ou autre
+      if ("Currency" %in% colnames(q)) {
+        cur <- as.character(q[, "Currency"])
+      } else {
+        cur <- as.character(q[, 1])
+      }
+      names(cur) <- rownames(q)
+      
+      out[names(cur)] <- cur
+      out
+    }
+    
+    # --------------------------------------------------------------------------
+    # V5: get_fx_series
+    # Télécharge un taux FX Yahoo:
+    #  - symbole direct : FROMTO=X (ex USDCHF=X)
+    #  - sinon inverse et on prend 1/x
+    # Retour : xts (Adj Close) = "TO par 1 FROM"
+    # --------------------------------------------------------------------------
+    get_fx_series <- function(from_ccy, to_ccy, from, to) {
+      from_ccy <- toupper(from_ccy)
+      to_ccy   <- toupper(to_ccy)
+      if (from_ccy == to_ccy) return(NULL)
+      
+      sym <- paste0(from_ccy, to_ccy, "=X")
+      fx  <- tryCatch(getSymbols(sym, src="yahoo", from=from, to=to, auto.assign=FALSE), error=function(e) NULL)
+      invert <- FALSE
+      
+      if (is.null(fx)) {
+        sym2 <- paste0(to_ccy, from_ccy, "=X")
+        fx2  <- tryCatch(getSymbols(sym2, src="yahoo", from=from, to=to, auto.assign=FALSE), error=function(e) NULL)
+        if (is.null(fx2)) stop(paste0("FX introuvable: ", from_ccy, "/", to_ccy))
+        fx <- fx2
+        invert <- TRUE
+      }
+      
+      fx <- tryCatch(Ad(fx), error=function(e) Cl(fx))
+      if (invert) fx <- 1 / fx
+      
+      colnames(fx) <- paste0(from_ccy, to_ccy)
+      fx
+    }
+    
+    # --------------------------------------------------------------------------
+    # V5: convert_prices_to_base
+    # Convertit un xts de prix (colonnes = tickers) vers la devise base.
+    # Retourne aussi:
+    #   - fx_last : dernier FX utilisé par ticker
+    #   - tick_ccy: devise estimée par ticker
+    # --------------------------------------------------------------------------
+    convert_prices_to_base <- function(px, ticker_ccy, base_ccy, from, to) {
+      base_ccy <- toupper(base_ccy)
+      
+      fx_last <- stats::setNames(rep(1, ncol(px)), colnames(px))
+      tick_ccy_out <- ticker_ccy
+      
+      px_list <- list()
+      
+      for (tk in colnames(px)) {
+        cur <- toupper(ticker_ccy[[tk]])
+        if (is.na(cur) || cur == "") cur <- base_ccy
+        tick_ccy_out[[tk]] <- cur
+        
+        if (cur == base_ccy) {
+          px_list[[tk]] <- px[, tk, drop = FALSE]
+          fx_last[tk] <- 1
+        } else {
+          fx <- get_fx_series(cur, base_ccy, from=from, to=to)
+          
+          # aligne les dates (intersection)
+          m <- merge(px[, tk, drop = FALSE], fx, all = FALSE)
+          
+          p_conv <- m[, 1] * m[, 2]
+          colnames(p_conv) <- tk
+          
+          px_list[[tk]] <- p_conv
+          fx_last[tk] <- as.numeric(fx[nrow(fx), 1])
+        }
+      }
+      
+      px_base <- do.call(merge, c(px_list, all = FALSE))
+      
+      list(
+        px_base  = px_base,
+        fx_last  = fx_last,
+        tick_ccy = tick_ccy_out,
+        base_ccy = base_ccy
+      )
+    }
+    
+    # --------------------------------------------------------------------------
     # calc_log_returns : calcule les log-rendements journaliers
-    # Nettoie les NA et vérifie qu'on a assez d'observations.
     # --------------------------------------------------------------------------
     calc_log_returns <- function(prices_xts) {
       r <- Return.calculate(prices_xts, method = "log")
@@ -104,43 +202,28 @@ library(modulr)
     }
     
     # --------------------------------------------------------------------------
-    # estimate_mu_sigma : estime le vecteur de rendements espérés (mu)
-    # et la matrice de covariance (Sigma), annualisés.
-    # On utilise nearPD() pour garantir que Sigma est semi-définie positive.
+    # estimate_mu_sigma : estime mu et Sigma annualisés
     # --------------------------------------------------------------------------
     estimate_mu_sigma <- function(rets_xts, freq = 252) {
-      # Moyenne des rendements journaliers x 252 => rendement annuel
-      mu <- colMeans(rets_xts) * freq
-      # Covariance journalière x 252 => covariance annuelle
+      mu    <- colMeans(rets_xts) * freq
       Sigma <- cov(rets_xts) * freq
-      # Projette sur la matrice SDP la plus proche (stabilité numérique)
       Sigma <- as.matrix(nearPD(Sigma)$mat)
       list(mu = as.numeric(mu), Sigma = Sigma, tickers = colnames(rets_xts))
     }
     
     # --------------------------------------------------------------------------
-    # solve_min_var_target : résout le problème QP
-    # "minimiser la variance sous contrainte de rendement cible"
-    #
-    # min  0.5 * w' Σ w
-    # s.c. sum(w) = 1          (budget)
-    #      μ' w   = target     (rendement cible)
-    #      w >= 0              (pas de vente à découvert)
-    #      w <= w_max          (concentration max)
+    # solve_min_var_target : Markowitz (QP) avec contraintes
     # --------------------------------------------------------------------------
     solve_min_var_target <- function(mu, Sigma, target_return, w_max = 1) {
       n <- length(mu)
       Dmat <- Sigma
       dvec <- rep(0, n)
       
-      # Construction de la matrice de contraintes pour solve.QP
-      # solve.QP attend : t(Amat) %*% w >= bvec
-      # Les `meq` premières contraintes sont des égalités.
       Amat <- cbind(
-        rep(1, n),   # sum(w) = 1
-        mu,          # mu'w = target
-        diag(n),     # w_i >= 0
-        -diag(n)     # -w_i >= -w_max  <=>  w_i <= w_max
+        rep(1, n),
+        mu,
+        diag(n),
+        -diag(n)
       )
       bvec <- c(1, target_return, rep(0, n), rep(-w_max, n))
       
@@ -148,38 +231,30 @@ library(modulr)
         solve.QP(Dmat = Dmat, dvec = dvec, Amat = Amat, bvec = bvec, meq = 2),
         error = function(e) NULL
       )
-      
       if (is.null(sol)) return(rep(NA_real_, n))
       
       w <- sol$solution
-      # Arrondit les poids très petits à zéro (bruit numérique)
       w[w < 1e-10] <- 0
       w
     }
     
     # --------------------------------------------------------------------------
     # compute_frontier : calcule la frontière efficiente complète
-    # en balayant des rendements cibles de min(mu) à max(mu).
-    # Retourne aussi l'indice du portefeuille tangent (max Sharpe).
     # --------------------------------------------------------------------------
     compute_frontier <- function(mu, Sigma, rf, n_grid = 40, w_max = 1) {
-      # Grille de rendements cibles
       targets <- seq(min(mu), max(mu), length.out = n_grid)
       
-      # Résout le QP pour chaque cible
       W <- lapply(targets, function(tr) {
         solve_min_var_target(mu, Sigma, tr, w_max = w_max)
       })
       W <- do.call(rbind, W)
       
-      # Retire les solutions infaisables (NA)
       ok <- apply(W, 1, function(x) all(is.finite(x)))
       W <- W[ok, , drop = FALSE]
       targets <- targets[ok]
       
       if (nrow(W) < 5) stop("Frontière non calculable (trop de points infaisables).")
       
-      # Calcul rendement / volatilité / Sharpe pour chaque portefeuille
       port_ret <- as.numeric(W %*% mu)
       port_vol <- apply(W, 1, function(w) sqrt(drop(t(w) %*% Sigma %*% w)))
       sharpe   <- (port_ret - rf) / port_vol
@@ -194,7 +269,7 @@ library(modulr)
     }
     
     # --------------------------------------------------------------------------
-    # pick_tangency : retourne l'indice du portefeuille tangent (max Sharpe)
+    # pick_tangency : indice du max Sharpe
     # --------------------------------------------------------------------------
     pick_tangency <- function(frontier) which.max(frontier$sharpe)
     
@@ -202,13 +277,16 @@ library(modulr)
     # EXPORT : liste des fonctions publiques du module
     # -------------------------------------------------------------------------
     list(
-      parse_tickers      = parse_tickers,
-      normalize_tickers = normalize_tickers,
-      get_prices_yahoo   = get_prices_yahoo,
-      calc_log_returns   = calc_log_returns,
-      estimate_mu_sigma  = estimate_mu_sigma,
-      compute_frontier   = compute_frontier,
-      pick_tangency      = pick_tangency
+      parse_tickers             = parse_tickers,
+      normalize_tickers         = normalize_tickers,
+      get_prices_yahoo          = get_prices_yahoo,
+      get_ticker_currency_yahoo = get_ticker_currency_yahoo,
+      get_fx_series             = get_fx_series,
+      convert_prices_to_base     = convert_prices_to_base,
+      calc_log_returns          = calc_log_returns,
+      estimate_mu_sigma         = estimate_mu_sigma,
+      compute_frontier          = compute_frontier,
+      pick_tangency             = pick_tangency
     )
   }
 }
