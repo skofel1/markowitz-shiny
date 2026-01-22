@@ -147,6 +147,16 @@ library(modulr)
             )
           )
         )
+      ),
+      nav_panel(
+        "Documentation",
+        layout_column_wrap(
+          width = 1,
+          card(
+            card_header("Documentation"),
+            uiOutput("doc_ui")
+          )
+        )
       )
     )
     
@@ -646,6 +656,30 @@ library(modulr)
         } else {
           tags$div(class = "text-muted mt-2", "Conversion FX appliquée sur toute la période (prix et rendements en CHF).")
         }
+      })
+      
+      
+      output$doc_ui <- renderUI({
+        # Le package markdown est requis par includeMarkdown()
+        if (!requireNamespace("markdown", quietly = TRUE)) {
+          return(tags$div(
+            class = "alert alert-warning",
+            "Le package 'markdown' est requis. Installe-le avec: install.packages('markdown')"
+          ))
+        }
+        
+        doc_path <- normalizePath(file.path("docs", "documentation.md"), mustWork = FALSE)
+        
+        if (!file.exists(doc_path)) {
+          return(tags$div(
+            class = "alert alert-warning",
+            "Fichier docs/documentation.md introuvable. Crée-le pour afficher la documentation."
+          ))
+        }
+        
+        shiny::withMathJax(
+          shiny::includeMarkdown(doc_path)
+        )
       })
       
     }
