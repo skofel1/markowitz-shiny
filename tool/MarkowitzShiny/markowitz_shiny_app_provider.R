@@ -20,7 +20,10 @@ library(modulr)
   # ============================================================================
   function() {
     
+    # --------------------------------------------------------------------------
     # Instancie le module Core (récupère la liste de fonctions métier)
+    # IMPORTANT : Core_() renvoie une LISTE de fonctions (pas une closure)
+    # --------------------------------------------------------------------------
     Core <- Core_()
     
     # ==========================================================================
@@ -30,9 +33,13 @@ library(modulr)
       title = "Markowitz Shiny (V5) — Base CHF + FX",
       theme = bs_theme(version = 5, bootswatch = "flatly"),
       
+      # =========================================================================
+      # ONGLET 1 : OPTIMISATION
+      # =========================================================================
       nav_panel(
         "Optimisation",
         layout_sidebar(
+          
           # --------------------------------------------------------------------
           # SIDEBAR : paramètres utilisateur
           # --------------------------------------------------------------------
@@ -75,7 +82,7 @@ library(modulr)
             ),
             
             # ---------------------------
-            # Robustesse (shrinkage Σ)
+            # Robustesse (Σ : covariance)
             # ---------------------------
             selectInput(
               "shrink_method",
@@ -87,12 +94,54 @@ library(modulr)
               ),
               selected = "constcor"
             ),
-            sliderInput(
-              "shrink_lambda",
-              "Intensité shrinkage (λ)",
-              min = 0, max = 1, value = 0.20, step = 0.05
+            
+            # Affiche λ uniquement si shrink activé
+            conditionalPanel(
+              condition = "input.shrink_method != 'none'",
+              sliderInput(
+                "shrink_lambda",
+                "Intensité shrinkage (λ)",
+                min = 0, max = 1, value = 0.20, step = 0.05
+              ),
+              helpText("λ=0 : Σ brute ; λ=1 : Σ cible. Recommandé: Corrélation constante, λ≈0.1–0.3")
             ),
-            helpText("λ=0 : Σ brute ; λ=1 : Σ cible. Recommandé: Corrélation constante, λ≈0.1–0.3"),
+            
+            # ---------------------------
+            # Robustesse (μ : rendements)
+            # ---------------------------
+            selectInput(
+              "mu_method",
+              "Robustesse (μ : rendements attendus)",
+              choices = c(
+                "Aucun (μ historique)" = "none",
+                "Winsorize (coupe extrêmes)" = "winsor",
+                "Shrink vers moyenne" = "shrink_mean",
+                "Shrink vers 0 (conservateur)" = "shrink_zero"
+              ),
+              selected = "shrink_mean"
+            ),
+            
+            # Winsor → on montre p
+            conditionalPanel(
+              condition = "input.mu_method == 'winsor'",
+              sliderInput(
+                "mu_winsor",
+                "Winsor tail (p)",
+                min = 0, max = 0.10, value = 0.02, step = 0.01
+              ),
+              helpText("p=0.02 coupe les 2% extrêmes (bas/haut) des rendements journaliers.")
+            ),
+            
+            # Shrink μ → on montre λ
+            conditionalPanel(
+              condition = "input.mu_method == 'shrink_mean' || input.mu_method == 'shrink_zero'",
+              sliderInput(
+                "mu_lambda",
+                "Intensité shrink μ (λ)",
+                min = 0, max = 1, value = 0.30, step = 0.05
+              ),
+              helpText("λ=0 : μ brut ; λ=1 : μ cible (moyenne ou 0). Reco: 0.3–0.6.")
+            ),
             
             sliderInput(
               "wmax", "Poids max par titre",
@@ -148,6 +197,54 @@ library(modulr)
           )
         )
       ),
+      
+      # =========================================================================
+      # ONGLET 2 : PROJECTION
+      # =========================================================================
+      nav_panel(
+        "Projection du portefeuille sélectionné",
+        layout_sidebar(
+          sidebar = sidebar(
+            width = 360,
+            
+            numericInput("proj_years", "Horizon (années)", value = 5, min = 1, max = 50),
+            numericInput("proj_monthly", "Investissement mensuel (CHF)", value = 500, min = 0, step = 50),
+            
+            radioButtons(
+              "proj_mode", "Méthode",
+              choices = c("Déterministe (moyenne)" = "det", "Simulation (Monte Carlo)" = "mc"),
+              selected = "mc",
+              inline = TRUE
+            ),
+            
+            conditionalPanel(
+              condition = "input.proj_mode == 'mc'",
+              numericInput("proj_nsims", "Nb simulations", value = 2000, min = 200, max = 20000, step = 200),
+              numericInput("proj_seed", "Seed (reproductible)", value = 42, min = 1, step = 1)
+            ),
+            
+            helpText("Note: la projection se base sur μ/Σ estimés sur la période historique choisie. Ce n’est pas une prédiction.")
+          ),
+          
+          layout_columns(
+            col_widths = c(7, 5),
+            card(
+              card_header("Projection de la valeur du portefeuille (base CHF)"),
+              plotOutput("proj_plot", height = 450)
+            ),
+            card(
+              card_header("Résumé"),
+              tableOutput("proj_summary"),
+              hr(),
+              uiOutput("proj_note")
+            )
+          )
+        )
+      ),
+      
+      # =========================================================================
+      # ONGLET 3 : DOCUMENTATION (Markdown)
+      # =========================================================================
       nav_panel(
         "Documentation",
         layout_column_wrap(
@@ -165,21 +262,22 @@ library(modulr)
     # ==========================================================================
     server <- function(input, output, session) {
       
+      # Devise base fixée (tu peux rendre ça paramétrable plus tard)
       base_ccy <- "CHF"
       
       # ------------------------------------------------------------------------
-      # Reactive values : stocke les résultats entre le calcul et l'affichage
+      # Reactive values : résultats entre calcul et affichage
       # ------------------------------------------------------------------------
       rv <- reactiveValues(
-        frontier = NULL,   # tibble avec ret, vol, sharpe, idx
-        tickers  = NULL,   # vecteur de noms de tickers
-        W        = NULL,   # matrice des poids (n_points x n_tickers)
-        tan_idx  = NULL,   # indice du portefeuille tangent
-        mvp_idx  = NULL,   # indice du portefeuille variance minimale
+        frontier = NULL,  # tibble ret/vol/sharpe/idx
+        tickers  = NULL,  # tickers effectifs (après nettoyage)
+        W        = NULL,  # matrice poids (n_points x n_tickers)
+        tan_idx  = NULL,  # indice portefeuille tangent
+        mvp_idx  = NULL,  # indice portefeuille variance minimale
         
-        px_last  = NULL,   # dernier prix CONVERTI en CHF (par ticker)
-        tick_ccy = NULL,   # devise détectée par ticker
-        fx_last  = NULL    # dernier FX "devise->CHF" utilisé par ticker
+        px_last  = NULL,  # dernier prix EN CHF (par ticker)
+        tick_ccy = NULL,  # devise détectée par ticker
+        fx_last  = NULL   # dernier FX (devise->CHF) utilisé par ticker
       )
       
       # ------------------------------------------------------------------------
@@ -193,6 +291,85 @@ library(modulr)
         i
       }
       
+      # ------------------------------------------------------------------------
+      # V5 CORRECTION : appliquer réellement l’input mu_method (robustesse μ)
+      # => à faire juste après estimate_mu_sigma(rets) et avant compute_frontier()
+      # ------------------------------------------------------------------------
+      apply_mu_robustness <- function(rets_xts, mu, method,
+                                      winsor_p = 0.02, lambda = 0.30, freq = 252) {
+        
+        method <- match.arg(
+          method,
+          c("none", "winsor", "shrink_mean", "shrink_zero")
+        )
+        
+        mu <- as.numeric(mu)
+        n  <- length(mu)
+        
+        # Sécu
+        if (n == 0) return(mu)
+        
+        # Noms (utile pour debug / cohérence)
+        nm <- colnames(rets_xts)
+        if (!is.null(nm) && length(nm) == n) names(mu) <- nm
+        
+        if (method == "none") {
+          return(mu)
+        }
+        
+        # ---- 1) Winsorize : on coupe les extrêmes des rendements journaliers
+        if (method == "winsor") {
+          p <- as.numeric(winsor_p)
+          if (!is.finite(p)) p <- 0.02
+          p <- max(min(p, 0.10), 0)
+          
+          R <- tryCatch(as.matrix(xts::coredata(rets_xts)), error = function(e) NULL)
+          if (is.null(R)) return(mu)
+          
+          # Clamp colonne par colonne
+          for (j in seq_len(ncol(R))) {
+            x <- R[, j]
+            x <- x[is.finite(x)]
+            if (length(x) < 10) next
+            
+            qlo <- as.numeric(stats::quantile(x, probs = p, na.rm = TRUE, names = FALSE))
+            qhi <- as.numeric(stats::quantile(x, probs = 1 - p, na.rm = TRUE, names = FALSE))
+            
+            # Applique winsor sur la colonne complète
+            R[, j] <- pmax(pmin(R[, j], qhi), qlo)
+          }
+          
+          mu_w <- colMeans(R, na.rm = TRUE) * freq
+          mu_w <- as.numeric(mu_w)
+          if (!is.null(nm) && length(nm) == length(mu_w)) names(mu_w) <- nm
+          return(mu_w)
+        }
+        
+        # ---- 2) Shrink μ vers moyenne
+        if (method == "shrink_mean") {
+          lam <- as.numeric(lambda)
+          if (!is.finite(lam)) lam <- 0
+          lam <- max(min(lam, 1), 0)
+          
+          target <- rep(mean(mu, na.rm = TRUE), n)
+          mu_s   <- (1 - lam) * mu + lam * target
+          return(mu_s)
+        }
+        
+        # ---- 3) Shrink μ vers 0 (conservateur)
+        if (method == "shrink_zero") {
+          lam <- as.numeric(lambda)
+          if (!is.finite(lam)) lam <- 0
+          lam <- max(min(lam, 1), 0)
+          
+          target <- rep(0, n)
+          mu_s   <- (1 - lam) * mu + lam * target
+          return(mu_s)
+        }
+        
+        mu
+      }
+      
       # ========================================================================
       # OBSERVER : déclenché au clic sur "Calculer"
       # ========================================================================
@@ -203,7 +380,7 @@ library(modulr)
           tryCatch({
             
             # ------------------------------------------------------------------
-            # 1) Parse et valide les tickers
+            # 1) Parse / valide les tickers
             # ------------------------------------------------------------------
             incProgress(0.05, detail = "Parsing tickers")
             tks <- Core$normalize_tickers(input$tickers, use_aliases = input$use_aliases)
@@ -221,12 +398,13 @@ library(modulr)
             )
             
             # ------------------------------------------------------------------
-            # 2) Devise par ticker + download des prix NATIFS
+            # 2) Devise par ticker + download prix NATIFS (Adjusted)
             # ------------------------------------------------------------------
             incProgress(0.20, detail = "Devises tickers + prix (Yahoo)")
+            
             tick_ccy <- Core$get_ticker_currency_yahoo(tks)
             
-            # Download des prix ajustés (dans la devise native du ticker)
+            # Prix ajustés dans la devise native du ticker
             px_native <- Core$get_prices_yahoo(tks, from = input$dates[1], to = input$dates[2])
             
             # ------------------------------------------------------------------
@@ -243,6 +421,7 @@ library(modulr)
             )
             
             px <- conv$px_base  # PRIX EN CHF (séries)
+            
             rv$tick_ccy <- conv$tick_ccy
             rv$fx_last  <- conv$fx_last
             
@@ -251,7 +430,7 @@ library(modulr)
             names(px_last) <- colnames(px)
             rv$px_last <- px_last
             
-            # Info à l'utilisateur : quelles devises on a détectées
+            # Notification devises détectées
             ccy_used <- unique(unname(rv$tick_ccy[colnames(px)]))
             ccy_used <- ccy_used[!is.na(ccy_used) & nzchar(ccy_used)]
             showNotification(
@@ -260,30 +439,66 @@ library(modulr)
             )
             
             # ------------------------------------------------------------------
-            # 4) Calcule les log-rendements et estime μ / Σ (EN CHF)
+            # 4) Rendements + estimation μ/Σ (EN CHF)
             # ------------------------------------------------------------------
             incProgress(0.55, detail = "Rendements + estimation μ/Σ (base CHF)")
             rets <- Core$calc_log_returns(px)
             est  <- Core$estimate_mu_sigma(rets)
             
             # ------------------------------------------------------------------
-            # 5) Shrinkage de Σ (robustesse)
+            # 4b) V5 CORRECTION : robustesse μ (rendements attendus)
+            # ------------------------------------------------------------------
+            mu_method <- if (!is.null(input$mu_method)) input$mu_method else "none"
+            
+            if (!is.null(mu_method) && mu_method != "none") {
+              
+              # valeurs de fallback si input caché / NULL
+              winsor_p <- if (!is.null(input$mu_winsor)) input$mu_winsor else 0.02
+              mu_lam   <- if (!is.null(input$mu_lambda)) input$mu_lambda else 0.30
+              
+              est$mu <- apply_mu_robustness(
+                rets_xts  = rets,
+                mu        = est$mu,
+                method    = mu_method,
+                winsor_p  = winsor_p,
+                lambda    = mu_lam,
+                freq      = 252
+              )
+              
+              # Notification claire
+              if (mu_method == "winsor") {
+                showNotification(
+                  paste0("Robust μ: winsor (p=", winsor_p, ")"),
+                  type = "message", duration = 3
+                )
+              } else {
+                showNotification(
+                  paste0("Robust μ: ", mu_method, " (λ=", mu_lam, ")"),
+                  type = "message", duration = 3
+                )
+              }
+            }
+            
+            # ------------------------------------------------------------------
+            # 5) Shrinkage Σ (robustesse covariance)
             # ------------------------------------------------------------------
             if (!is.null(input$shrink_method) && input$shrink_method != "none") {
+              lam <- if (!is.null(input$shrink_lambda)) input$shrink_lambda else 0.20
+              
               est$Sigma <- Core$shrink_covariance(
                 est$Sigma,
                 method = input$shrink_method,
-                lambda = input$shrink_lambda
+                lambda = lam
               )
               
               showNotification(
-                paste0("Shrinkage Σ: ", input$shrink_method, " (λ=", input$shrink_lambda, ")"),
+                paste0("Shrinkage Σ: ", input$shrink_method, " (λ=", lam, ")"),
                 type = "message", duration = 3
               )
             }
             
             # ------------------------------------------------------------------
-            # 6) Calcule la frontière efficiente
+            # 6) Frontière efficiente
             # ------------------------------------------------------------------
             incProgress(0.80, detail = "Frontière + tangence")
             f <- Core$compute_frontier(
@@ -294,7 +509,7 @@ library(modulr)
             )
             
             # ------------------------------------------------------------------
-            # 7) Construit le tibble de résultats + indices clés
+            # 7) Tibble de résultats + indices clés
             # ------------------------------------------------------------------
             df <- tibble::tibble(
               ret    = f$ret,
@@ -313,7 +528,7 @@ library(modulr)
             df$idx <- seq_len(nrow(df))
             
             # ------------------------------------------------------------------
-            # 8) Stocke tout dans les reactive values
+            # 8) Stocke dans reactive values
             # ------------------------------------------------------------------
             rv$frontier <- df
             rv$tickers  <- est$tickers
@@ -326,6 +541,7 @@ library(modulr)
             
           }, error = function(e) {
             
+            # Reset safe
             rv$frontier <- NULL
             rv$tickers  <- NULL
             rv$W        <- NULL
@@ -360,7 +576,7 @@ library(modulr)
       })
       
       # ========================================================================
-      # OUTPUT : graphique frontière (ligne "propre" = branche efficiente)
+      # OUTPUT : graphique frontière (ligne propre = branche efficiente)
       # ========================================================================
       output$frontier_plot <- renderPlot({
         req(rv$frontier, rv$tan_idx, rv$mvp_idx, input$pick_idx)
@@ -373,6 +589,7 @@ library(modulr)
         sel <- df[sel_i, , drop = FALSE]
         mvp <- df[rv$mvp_idx, , drop = FALSE]
         
+        # Branche efficiente : on garde pour chaque vol_bucket le max ret
         df_efficient <- df %>%
           dplyr::mutate(vol_bucket = round(vol, 5)) %>%
           dplyr::group_by(vol_bucket) %>%
@@ -381,6 +598,7 @@ library(modulr)
           dplyr::ungroup() %>%
           dplyr::arrange(vol)
         
+        # Branche inefficiente : les autres points
         df_inefficient <- df %>%
           dplyr::anti_join(df_efficient, by = c("vol", "ret"))
         
@@ -471,15 +689,15 @@ library(modulr)
       }
       
       # ========================================================================
-      # HELPER : orders table (utilise prix EN CHF)
+      # HELPER : orders table (prix EN CHF)
       # ========================================================================
       build_orders_table <- function(w, px_last_chf) {
         cap <- input$capital
         
         df <- tibble::tibble(
           Ticker = rv$tickers,
-          Poids = as.numeric(w),
-          Prix  = as.numeric(px_last_chf[rv$tickers]),   # PRIX EN CHF
+          Poids  = as.numeric(w),
+          Prix   = as.numeric(px_last_chf[rv$tickers]),  # PRIX EN CHF
           Montant_cible = as.numeric(w) * cap
         ) %>%
           dplyr::mutate(
@@ -494,22 +712,21 @@ library(modulr)
           df <- greedy_fill_cash(df, cash_left)
         }
         
-        df <- df %>%
-          dplyr::mutate(Montant_investi = Shares * Prix)
+        df <- df %>% dplyr::mutate(Montant_investi = Shares * Prix)
         
-        invested <- sum(df$Montant_investi, na.rm = TRUE)
-        cash_left2 <- cap - invested
+        invested  <- sum(df$Montant_investi, na.rm = TRUE)
+        cash_left <- cap - invested
         
         df_disp <- df %>%
           dplyr::mutate(
             Poids = scales::percent(Poids, accuracy = 0.01),
-            Prix = round(Prix, 2),
+            Prix  = round(Prix, 2),
             Montant_cible   = paste0("CHF ", scales::comma(Montant_cible, accuracy = 0.01)),
             Montant_investi = paste0("CHF ", scales::comma(Montant_investi, accuracy = 0.01))
           ) %>%
           dplyr::select(Ticker, Poids, Prix, Shares, Montant_cible, Montant_investi)
         
-        list(table = df_disp, cash_left = cash_left2, invested = invested)
+        list(table = df_disp, cash_left = cash_left, invested = invested)
       }
       
       # ========================================================================
@@ -601,7 +818,7 @@ library(modulr)
       
       output$orders_sel <- renderTable({
         req(rv$W, rv$tickers, rv$px_last, input$pick_idx)
-        n <- nrow(rv$W)
+        n     <- nrow(rv$W)
         sel_i <- clamp_idx(input$pick_idx, n)
         w <- as.numeric(rv$W[sel_i, ])
         res <- build_orders_table(w, rv$px_last)
@@ -610,7 +827,7 @@ library(modulr)
       
       output$cash_box <- renderUI({
         req(rv$W, rv$tickers, rv$px_last, input$pick_idx)
-        n <- nrow(rv$W)
+        n     <- nrow(rv$W)
         sel_i <- clamp_idx(input$pick_idx, n)
         w <- as.numeric(rv$W[sel_i, ])
         res <- build_orders_table(w, rv$px_last)
@@ -658,9 +875,10 @@ library(modulr)
         }
       })
       
-      
+      # ========================================================================
+      # OUTPUT : Documentation (Markdown)
+      # ========================================================================
       output$doc_ui <- renderUI({
-        # Le package markdown est requis par includeMarkdown()
         if (!requireNamespace("markdown", quietly = TRUE)) {
           return(tags$div(
             class = "alert alert-warning",
@@ -682,7 +900,199 @@ library(modulr)
         )
       })
       
-    }
+      # ========================================================================
+      # Projection : portefeuille sélectionné
+      # ========================================================================
+      selected_portfolio <- reactive({
+        req(rv$frontier, rv$W, rv$tickers, input$pick_idx)
+        
+        n <- nrow(rv$W)
+        sel_i <- clamp_idx(input$pick_idx, n)
+        
+        list(
+          idx = sel_i,
+          w   = as.numeric(rv$W[sel_i, ]),
+          mu  = as.numeric(rv$frontier$ret[sel_i]),  # annualisé
+          vol = as.numeric(rv$frontier$vol[sel_i])   # annualisé
+        )
+      })
+      
+      # Projection déterministe (moyenne)
+      project_det <- function(cap0, mu_annual, monthly_add, years) {
+        n_months <- years * 12
+        r_m <- (1 + mu_annual)^(1/12) - 1  # taux mensuel équivalent
+        
+        v <- numeric(n_months + 1)
+        v[1] <- cap0
+        
+        for (t in 1:n_months) {
+          v[t + 1] <- (v[t] * (1 + r_m)) + monthly_add
+        }
+        
+        tibble::tibble(month = 0:n_months, value = v)
+      }
+      
+      # Projection Monte Carlo (GBM simplifié)
+      project_mc <- function(cap0, mu_annual, vol_annual, monthly_add, years, nsims, seed = 42) {
+        set.seed(seed)
+        
+        n_months <- years * 12
+        dt <- 1/12
+        
+        drift    <- (mu_annual - 0.5 * vol_annual^2) * dt
+        shock_sd <- vol_annual * sqrt(dt)
+        
+        Z <- matrix(stats::rnorm(n_months * nsims), nrow = n_months, ncol = nsims)
+        R <- exp(drift + shock_sd * Z)  # multiplicateurs mensuels
+        
+        V <- matrix(NA_real_, nrow = n_months + 1, ncol = nsims)
+        V[1, ] <- cap0
+        
+        for (t in 1:n_months) {
+          V[t + 1, ] <- (V[t, ] * R[t, ]) + monthly_add
+        }
+        
+        qs <- c(0.10, 0.25, 0.50, 0.75, 0.90)
+        qmat <- apply(V, 1, stats::quantile, probs = qs, na.rm = TRUE)
+        
+        qdf <- tibble::as_tibble(t(qmat))
+        colnames(qdf) <- paste0("p", qs * 100)
+        qdf <- dplyr::mutate(qdf, month = 0:n_months, .before = 1)
+        
+        keep <- min(30, nsims)
+        idx  <- sample.int(nsims, keep)
+        paths <- V[, idx, drop = FALSE]
+        paths_df <- tibble::tibble(
+          month = rep(0:n_months, times = keep),
+          sim   = rep(seq_len(keep), each = n_months + 1),
+          value = as.numeric(paths)
+        )
+        
+        list(q = qdf, paths = paths_df)
+      }
+      
+      # ========================================================================
+      # OUTPUT : plot projection
+      # ========================================================================
+      output$proj_plot <- renderPlot({
+        req(rv$frontier, input$proj_years, input$proj_monthly)
+        
+        sp    <- selected_portfolio()
+        cap0  <- input$capital
+        years <- as.integer(input$proj_years)
+        addm  <- as.numeric(input$proj_monthly)
+        
+        if (identical(input$proj_mode, "det")) {
+          
+          df <- project_det(cap0, sp$mu, addm, years)
+          
+          ggplot(df, aes(x = month/12, y = value)) +
+            geom_line() +
+            theme_minimal() +
+            scale_y_continuous(labels = scales::comma) +
+            labs(
+              x = "Années",
+              y = "Valeur (CHF)",
+              title = "Projection déterministe (moyenne)",
+              subtitle = paste0(
+                "μ=", scales::percent(sp$mu, accuracy = 0.1),
+                " ; vol=", scales::percent(sp$vol, accuracy = 0.1),
+                " ; +", scales::comma(addm), " CHF/mois"
+              )
+            )
+          
+        } else {
+          
+          ns   <- as.integer(input$proj_nsims)
+          seed <- as.integer(input$proj_seed)
+          
+          res <- project_mc(cap0, sp$mu, sp$vol, addm, years, nsims = ns, seed = seed)
+          q   <- res$q
+          
+          ggplot() +
+            geom_line(
+              data = res$paths,
+              aes(x = month/12, y = value, group = sim),
+              alpha = 0.15
+            ) +
+            geom_line(data = q, aes(x = month/12, y = p50), size = 1.1) +
+            geom_line(data = q, aes(x = month/12, y = p10), linetype = "dashed") +
+            geom_line(data = q, aes(x = month/12, y = p90), linetype = "dashed") +
+            theme_minimal() +
+            scale_y_continuous(labels = scales::comma) +
+            labs(
+              x = "Années",
+              y = "Valeur (CHF)",
+              title = "Projection Monte Carlo",
+              subtitle = paste0(
+                "Médiane + bandes p10/p90 ; μ=", scales::percent(sp$mu, accuracy = 0.1),
+                " ; vol=", scales::percent(sp$vol, accuracy = 0.1),
+                " ; +", scales::comma(addm), " CHF/mois ; ", ns, " sims"
+              )
+            )
+        }
+      })
+      
+      # ========================================================================
+      # OUTPUT : résumé projection
+      # ========================================================================
+      output$proj_summary <- renderTable({
+        sp    <- selected_portfolio()
+        cap0  <- input$capital
+        years <- as.integer(input$proj_years)
+        addm  <- as.numeric(input$proj_monthly)
+        n_months <- years * 12
+        
+        if (identical(input$proj_mode, "det")) {
+          df <- project_det(cap0, sp$mu, addm, years)
+          final <- df$value[nrow(df)]
+          
+          tibble::tibble(
+            Metric = c("Capital initial", "Contributions totales", "Valeur finale (moyenne)"),
+            Value = c(
+              scales::comma(cap0),
+              scales::comma(addm * n_months),
+              scales::comma(final)
+            )
+          )
+        } else {
+          res <- project_mc(
+            cap0, sp$mu, sp$vol, addm, years,
+            nsims = as.integer(input$proj_nsims),
+            seed  = as.integer(input$proj_seed)
+          )
+          q_last <- res$q[nrow(res$q), ]
+          
+          tibble::tibble(
+            Metric = c("Capital initial", "Contributions totales", "Valeur finale p10", "Valeur finale médiane", "Valeur finale p90"),
+            Value = c(
+              scales::comma(cap0),
+              scales::comma(addm * n_months),
+              scales::comma(q_last$p10),
+              scales::comma(q_last$p50),
+              scales::comma(q_last$p90)
+            )
+          )
+        }
+      })
+      
+      # ========================================================================
+      # OUTPUT : note projection
+      # ========================================================================
+      output$proj_note <- renderUI({
+        sp <- selected_portfolio()
+        tags$div(
+          class = "small text-muted",
+          tags$p("Hypothèses : μ/vol calculés à partir des données historiques sur la période sélectionnée, et appliqués au futur."),
+          tags$p("Comme tu utilises les prix ajustés (Adjusted), les dividendes sont déjà inclus dans le rendement historique (approx total return)."),
+          tags$p(paste0(
+            "Portefeuille sélectionné: μ=", scales::percent(sp$mu, accuracy = 0.1),
+            ", vol=", scales::percent(sp$vol, accuracy = 0.1), "."
+          ))
+        )
+      })
+      
+    } # fin server
     
     # ==========================================================================
     # LANCE L'APPLICATION
