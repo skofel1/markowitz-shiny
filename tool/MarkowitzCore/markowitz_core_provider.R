@@ -88,6 +88,93 @@ library(modulr)
     }
     
     # --------------------------------------------------------------------------
+    # get_benchmark_stats : télécharge et calcule μ/σ pour un benchmark
+    # --------------------------------------------------------------------------
+    get_benchmark_stats <- function(symbol, from, to, base_ccy = "CHF", freq = 252) {
+      
+      result <- tryCatch({
+        # Télécharger les prix
+        px <- suppressWarnings(
+          getSymbols(symbol, src = "yahoo", from = from, to = to, auto.assign = FALSE)
+        )
+        px <- Ad(px)
+        
+        # Détecter la devise du benchmark
+        ccy <- tryCatch({
+          q <- getQuote(symbol, src = "yahoo", what = yahooQF("Currency"))
+          toupper(as.character(q[1, "Currency"]))
+        }, error = function(e) "USD")
+        
+        if (is.na(ccy) || ccy == "") ccy <- "USD"
+        
+        # Conversion FX si nécessaire
+        if (ccy != base_ccy) {
+          fx_sym <- paste0(ccy, base_ccy, "=X")
+          fx <- tryCatch(
+            getSymbols(fx_sym, src = "yahoo", from = from, to = to, auto.assign = FALSE),
+            error = function(e) {
+              # Essayer l'inverse
+              fx_sym2 <- paste0(base_ccy, ccy, "=X")
+              fx2 <- getSymbols(fx_sym2, src = "yahoo", from = from, to = to, auto.assign = FALSE)
+              1 / Ad(fx2)
+            }
+          )
+          fx <- if (inherits(fx, "xts")) Ad(fx) else fx
+          
+          # Merger et convertir
+          m <- merge(px, fx, all = FALSE)
+          px <- m[, 1] * m[, 2]
+        }
+        
+        # Calculer rendements log
+        rets <- diff(log(px))
+        rets <- na.omit(rets)
+        
+        if (nrow(rets) < 60) return(NULL)
+        
+        # Stats annualisées
+        mu <- as.numeric(mean(rets, na.rm = TRUE) * freq)
+        sigma <- as.numeric(sd(rets, na.rm = TRUE) * sqrt(freq))
+        
+        list(
+          symbol = symbol,
+          mu = mu,
+          vol = sigma,
+          currency = ccy,
+          n_obs = nrow(rets)
+        )
+        
+      }, error = function(e) NULL)
+      
+      result
+    }
+    
+    # --------------------------------------------------------------------------
+    # get_benchmarks : récupère plusieurs benchmarks standards
+    # --------------------------------------------------------------------------
+    get_benchmarks <- function(from, to, base_ccy = "CHF") {
+      
+      benchmarks <- list(
+        "S&P 500" = "^GSPC",
+        "MSCI World" = "URTH",
+        "Nasdaq 100" = "^NDX"
+      )
+      
+      results <- list()
+      
+      for (name in names(benchmarks)) {
+        sym <- benchmarks[[name]]
+        stats <- get_benchmark_stats(sym, from, to, base_ccy)
+        if (!is.null(stats)) {
+          stats$name <- name
+          results[[name]] <- stats
+        }
+      }
+      
+      results
+    }
+    
+    # --------------------------------------------------------------------------
     # V5: get_ticker_currency_yahoo
     # Récupère la devise "Currency" par ticker via getQuote().
     # --------------------------------------------------------------------------
@@ -334,6 +421,9 @@ library(modulr)
       parse_tickers             = parse_tickers,
       normalize_tickers         = normalize_tickers,
       get_prices_yahoo          = get_prices_yahoo,
+      get_benchmark_stats       = get_benchmark_stats,
+      get_benchmarks            = get_benchmarks,
+      
       
       # V5 FX / devises
       get_ticker_currency_yahoo = get_ticker_currency_yahoo,
