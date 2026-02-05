@@ -352,13 +352,14 @@ display: none;
 </div>
 
 
-<div id="documentation-markowitz-portfolio-optimizer-v10" class="section level1">
-<h1>Documentation — Markowitz Portfolio Optimizer (V10)</h1>
+<div id="documentation-markowitz-portfolio-optimizer-v13" class="section level1">
+<h1>Documentation — Markowitz Portfolio Optimizer (V13)</h1>
 <blockquote>
 <p><strong>Objectif</strong> : Construire, analyser, comparer et
 backtester des portefeuilles optimisés selon la théorie moderne du
 portefeuille (Markowitz), avec conversion FX automatique vers
-<strong>CHF</strong> et métriques de risque professionnelles.</p>
+<strong>CHF</strong>, métriques de risque professionnelles (CVaR, stress
+testing), et outils de suivi de portefeuille.</p>
 </blockquote>
 <hr />
 <div id="avertissement-légal" class="section level2">
@@ -380,24 +381,31 @@ d’investissement</li>
 <h2>Table des matières</h2>
 <ol style="list-style-type: decimal">
 <li><a href="#vue-densemble">Vue d’ensemble</a></li>
-<li><a href="#fondations-math%C3%A9matiques">Fondations
+<li><a href="#fondations-mathématiques">Fondations
 mathématiques</a></li>
-<li><a href="#m%C3%A9triques-de-performance">Métriques de
+<li><a href="#métriques-de-performance">Métriques de
 performance</a></li>
+<li><a href="#métriques-de-risque-avancées-cvar">Métriques de risque
+avancées (CVaR)</a></li>
+<li><a href="#stress-testing">Stress Testing</a></li>
 <li><a href="#robustesse-statistique">Robustesse statistique</a></li>
 <li><a href="#gestion-des-devises-fx">Gestion des devises FX</a></li>
-<li><a href="#benchmarks-de-r%C3%A9f%C3%A9rence">Benchmarks de
-référence</a></li>
+<li><a href="#benchmarks-de-référence">Benchmarks de référence</a></li>
 <li><a href="#projection-monte-carlo">Projection Monte Carlo</a></li>
 <li><a href="#backtest-walk-forward">Backtest Walk-Forward</a></li>
-<li><a href="#guide-des-param%C3%A8tres">Guide des paramètres</a></li>
+<li><a href="#suivi-de-portefeuille-holdings">Suivi de portefeuille
+(Holdings)</a></li>
+<li><a href="#contraintes-sectorielles">Contraintes
+sectorielles</a></li>
+<li><a href="#guide-des-paramètres">Guide des paramètres</a></li>
 <li><a href="#exemples-pratiques">Exemples pratiques</a></li>
-<li><a href="#interpr%C3%A9tation-des-r%C3%A9sultats">Interprétation des
+<li><a href="#interprétation-des-résultats">Interprétation des
 résultats</a></li>
-<li><a href="#limites-et-pr%C3%A9cautions">Limites et
-précautions</a></li>
+<li><a href="#limites-et-précautions">Limites et précautions</a></li>
 <li><a href="#glossaire">Glossaire</a></li>
-<li><a href="#r%C3%A9f%C3%A9rences">Références</a></li>
+<li><a href="#références">Références</a></li>
+<li><a href="#guide-du-débutant--exemple-pas-à-pas">Guide du débutant :
+Exemple pas à pas</a></li>
 </ol>
 <hr />
 </div>
@@ -409,45 +417,45 @@ précautions</a></li>
 séquentiellement :</p>
 <table>
 <thead>
-<tr>
+<tr class="header">
 <th align="left">Étape</th>
 <th align="left">Description</th>
 </tr>
 </thead>
 <tbody>
-<tr>
+<tr class="odd">
 <td align="left">1. PARSING</td>
 <td align="left">Normalisation des tickers (alias CH → .SW)</td>
 </tr>
-<tr>
+<tr class="even">
 <td align="left">2. DONNÉES</td>
 <td align="left">Téléchargement prix ajustés (Yahoo Finance)</td>
 </tr>
-<tr>
+<tr class="odd">
 <td align="left">3. DEVISES</td>
 <td align="left">Détection devise + conversion FX → CHF</td>
 </tr>
-<tr>
+<tr class="even">
 <td align="left">4. RENDEMENTS</td>
 <td align="left">Calcul log-returns journaliers</td>
 </tr>
-<tr>
+<tr class="odd">
 <td align="left">5. ESTIMATION</td>
 <td align="left">μ (rendements attendus) et Σ (covariance)</td>
 </tr>
-<tr>
+<tr class="even">
 <td align="left">6. ROBUSTESSE</td>
 <td align="left">Shrinkage Σ + ajustement μ (optionnel)</td>
 </tr>
-<tr>
+<tr class="odd">
 <td align="left">7. OPTIMISATION</td>
 <td align="left">Frontière efficiente (Quadratic Programming)</td>
 </tr>
-<tr>
+<tr class="even">
 <td align="left">8. BENCHMARKS</td>
 <td align="left">Calcul S&amp;P 500, Equal-Weight pour comparaison</td>
 </tr>
-<tr>
+<tr class="odd">
 <td align="left">9. SORTIES</td>
 <td align="left">Graphiques, KPIs, allocations, ordres, exports</td>
 </tr>
@@ -462,28 +470,38 @@ séquentiellement :</p>
 <col width="55%" />
 </colgroup>
 <thead>
-<tr>
+<tr class="header">
 <th align="left">Onglet</th>
 <th align="left">Fonction</th>
 </tr>
 </thead>
 <tbody>
-<tr>
-<td align="left"><strong>Optimisation</strong></td>
+<tr class="odd">
+<td align="left"><strong>Frontière Efficiente</strong></td>
 <td align="left">Construction de la frontière efficiente et sélection de
 portefeuille</td>
 </tr>
-<tr>
-<td align="left"><strong>Projection</strong></td>
+<tr class="even">
+<td align="left"><strong>Monte-Carlo</strong></td>
 <td align="left">Simulation de l’évolution future avec DCA et objectif
 financier</td>
 </tr>
-<tr>
+<tr class="odd">
 <td align="left"><strong>Backtest</strong></td>
 <td align="left">Test out-of-sample walk-forward avec métriques
 professionnelles</td>
 </tr>
-<tr>
+<tr class="even">
+<td align="left"><strong>Stress Test</strong></td>
+<td align="left">Test de résistance aux crises historiques (GFC, COVID,
+etc.)</td>
+</tr>
+<tr class="odd">
+<td align="left"><strong>Holdings</strong></td>
+<td align="left">Suivi du portefeuille réel vs cible, calcul des trades
+de rebalancing</td>
+</tr>
+<tr class="even">
 <td align="left"><strong>Documentation</strong></td>
 <td align="left">Ce guide</td>
 </tr>
@@ -578,24 +596,24 @@ efficiente</strong>.</p>
 <col width="39%" />
 </colgroup>
 <thead>
-<tr>
+<tr class="header">
 <th align="left">Portefeuille</th>
 <th align="left">Définition</th>
 <th align="left">Caractéristique</th>
 </tr>
 </thead>
 <tbody>
-<tr>
+<tr class="odd">
 <td align="left"><strong>MVP</strong></td>
 <td align="left">Minimum Variance Portfolio</td>
 <td align="left">Risque minimal absolu</td>
 </tr>
-<tr>
+<tr class="even">
 <td align="left"><strong>Tangent</strong></td>
 <td align="left">Maximum Sharpe Ratio</td>
 <td align="left">Meilleur rendement ajusté au risque</td>
 </tr>
-<tr>
+<tr class="odd">
 <td align="left"><strong>Sélection</strong></td>
 <td align="left">Choisi via le slider</td>
 <td align="left">Compromis personnalisé risque/rendement</td>
@@ -638,29 +656,29 @@ total :</p>
 <p><strong>Interprétation :</strong></p>
 <table>
 <thead>
-<tr>
+<tr class="header">
 <th align="left">Sharpe</th>
 <th align="left">Qualité</th>
 </tr>
 </thead>
 <tbody>
-<tr>
+<tr class="odd">
 <td align="left">&lt; 0</td>
 <td align="left">Mauvais (rendement &lt; taux sans risque)</td>
 </tr>
-<tr>
+<tr class="even">
 <td align="left">0 – 0.5</td>
 <td align="left">Faible</td>
 </tr>
-<tr>
+<tr class="odd">
 <td align="left">0.5 – 1.0</td>
 <td align="left">Acceptable</td>
 </tr>
-<tr>
+<tr class="even">
 <td align="left">1.0 – 2.0</td>
 <td align="left">Bon</td>
 </tr>
-<tr>
+<tr class="odd">
 <td align="left">&gt; 2.0</td>
 <td align="left">Excellent (rare sur le long terme)</td>
 </tr>
@@ -751,6 +769,189 @@ importants.</p>
 <hr />
 </div>
 </div>
+<div id="métriques-de-risque-avancées-cvar" class="section level2">
+<h2>Métriques de risque avancées (CVaR)</h2>
+<div id="value-at-risk-var" class="section level3">
+<h3>Value at Risk (VaR)</h3>
+<p>La VaR mesure la perte maximale attendue à un niveau de confiance
+donné :</p>
+<p><span class="math display">\[
+\text{VaR}_\alpha = -\text{Quantile}_\alpha(R)
+\]</span></p>
+<p><strong>Exemple :</strong> Une VaR(95%) de 2.5% signifie que dans 95%
+des cas, la perte journalière ne dépassera pas 2.5%.</p>
+<p><strong>Limites de la VaR :</strong> * Ne dit rien sur l’ampleur des
+pertes au-delà du seuil * Peut sous-estimer le risque de queue (tail
+risk)</p>
+</div>
+<div id="conditional-value-at-risk-cvar-expected-shortfall" class="section level3">
+<h3>Conditional Value at Risk (CVaR / Expected Shortfall)</h3>
+<p>La CVaR (aussi appelée Expected Shortfall) mesure la perte moyenne
+dans les pires cas :</p>
+<p><span class="math display">\[
+\text{CVaR}_\alpha = \mathbb{E}[R \mid R \leq \text{VaR}_\alpha]
+\]</span></p>
+<p><strong>Interprétation :</strong> * CVaR(95%) = perte moyenne dans
+les 5% pires jours * Toujours plus grande (en valeur absolue) que la VaR
+* Métrique préférée par les régulateurs (Bâle III) et les
+institutionnels</p>
+<p><strong>Exemple :</strong> Si VaR(95%) = -2.5% et CVaR(95%) = -4.1%,
+cela signifie : * 95% des jours, perte &lt; 2.5% * Dans les 5% pires
+jours, perte moyenne = 4.1%</p>
+<table>
+<colgroup>
+<col width="23%" />
+<col width="45%" />
+<col width="30%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th align="left">Métrique</th>
+<th align="left">Ce qu’elle mesure</th>
+<th align="left">Utilisation</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td align="left"><strong>VaR</strong></td>
+<td align="left">Seuil de perte au quantile α</td>
+<td align="left">Limite de risque simple</td>
+</tr>
+<tr class="even">
+<td align="left"><strong>CVaR</strong></td>
+<td align="left">Perte moyenne au-delà de VaR</td>
+<td align="left">Risque de queue (tail risk)</td>
+</tr>
+</tbody>
+</table>
+<hr />
+</div>
+</div>
+<div id="stress-testing" class="section level2">
+<h2>Stress Testing</h2>
+<div id="objectif" class="section level3">
+<h3>Objectif</h3>
+<p>Le stress testing évalue comment votre portefeuille aurait performé
+pendant les crises historiques majeures. C’est un complément essentiel
+aux métriques de risque standard.</p>
+</div>
+<div id="scénarios-disponibles" class="section level3">
+<h3>Scénarios disponibles</h3>
+<table>
+<colgroup>
+<col width="24%" />
+<col width="21%" />
+<col width="21%" />
+<col width="31%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th align="left">Scénario</th>
+<th align="left">Période</th>
+<th align="left">S&amp;P 500</th>
+<th align="left">Description</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td align="left"><strong>GFC 2008</strong></td>
+<td align="left">Sep-Nov 2008</td>
+<td align="left">-46%</td>
+<td align="left">Crise financière mondiale (Lehman Brothers)</td>
+</tr>
+<tr class="even">
+<td align="left"><strong>COVID 2020</strong></td>
+<td align="left">Fév-Mar 2020</td>
+<td align="left">-34%</td>
+<td align="left">Crash pandémique</td>
+</tr>
+<tr class="odd">
+<td align="left"><strong>Euro Crisis 2011</strong></td>
+<td align="left">Juil-Sep 2011</td>
+<td align="left">-18%</td>
+<td align="left">Crise de la dette souveraine européenne</td>
+</tr>
+<tr class="even">
+<td align="left"><strong>Taper Tantrum 2013</strong></td>
+<td align="left">Mai-Juin 2013</td>
+<td align="left">-5%</td>
+<td align="left">Annonce de réduction du QE par la Fed</td>
+</tr>
+<tr class="odd">
+<td align="left"><strong>China Deval 2015</strong></td>
+<td align="left">Août 2015</td>
+<td align="left">-10%</td>
+<td align="left">Dévaluation du yuan chinois</td>
+</tr>
+<tr class="even">
+<td align="left"><strong>Vol Shock 2018</strong></td>
+<td align="left">Déc 2018</td>
+<td align="left">-15%</td>
+<td align="left">Hausse des taux + tensions commerciales</td>
+</tr>
+</tbody>
+</table>
+</div>
+<div id="méthodologie" class="section level3">
+<h3>Méthodologie</h3>
+<p>Le stress test utilise deux approches :</p>
+<p><strong>1. Données historiques (si disponibles)</strong></p>
+<p>Si vos actifs existaient pendant la période de crise, l’application
+calcule leur performance réelle :</p>
+<p><span class="math display">\[
+\text{Impact}_i = \frac{P_{\text{fin}}^i -
+P_{\text{début}}^i}{P_{\text{début}}^i}
+\]</span></p>
+<p><strong>2. Estimation par beta (si données manquantes)</strong></p>
+<p>Pour les actifs sans historique suffisant, l’impact est estimé via
+leur beta au marché :</p>
+<p><span class="math display">\[
+\text{Impact}_i^{\text{estimé}} = \beta_i \times
+\text{Impact}_{\text{S\&amp;P500}}
+\]</span></p>
+</div>
+<div id="impact-portefeuille" class="section level3">
+<h3>Impact portefeuille</h3>
+<p>L’impact total sur le portefeuille est la moyenne pondérée des
+impacts individuels :</p>
+<p><span class="math display">\[
+\text{Impact}_{\text{portefeuille}} = \sum_{i=1}^{n} w_i \times
+\text{Impact}_i
+\]</span></p>
+</div>
+<div id="interprétation" class="section level3">
+<h3>Interprétation</h3>
+<table>
+<thead>
+<tr class="header">
+<th align="left">Impact estimé</th>
+<th align="left">Interprétation</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td align="left">&gt; -15%</td>
+<td align="left">Résistant (défensif)</td>
+</tr>
+<tr class="even">
+<td align="left">-15% à -25%</td>
+<td align="left">Modéré</td>
+</tr>
+<tr class="odd">
+<td align="left">-25% à -35%</td>
+<td align="left">Sensible au marché</td>
+</tr>
+<tr class="even">
+<td align="left">&lt; -35%</td>
+<td align="left">Très exposé (agressif)</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Question clé :</strong> “Puis-je supporter cette perte sans
+paniquer et vendre au pire moment ?”</p>
+<hr />
+</div>
+</div>
 <div id="robustesse-statistique" class="section level2">
 <h2>Robustesse statistique</h2>
 <div id="pourquoi-la-robustesse" class="section level3">
@@ -776,19 +977,19 @@ amplifie ces erreurs (“error maximization”).</p>
 <col width="30%" />
 </colgroup>
 <thead>
-<tr>
+<tr class="header">
 <th align="left">Méthode</th>
 <th align="left">Cible</th>
 <th align="left">Effet</th>
 </tr>
 </thead>
 <tbody>
-<tr>
+<tr class="odd">
 <td align="left"><strong>Diagonal</strong></td>
 <td align="left">Matrice diagonale (variances uniquement)</td>
 <td align="left">Ignore les corrélations</td>
 </tr>
-<tr>
+<tr class="even">
 <td align="left"><strong>Corrélation constante</strong></td>
 <td align="left">Corrélation moyenne uniforme</td>
 <td align="left">Stabilise les corrélations</td>
@@ -805,21 +1006,21 @@ corrélation moyenne est :</p>
 <h4>Choix du paramètre lambda</h4>
 <table>
 <thead>
-<tr>
+<tr class="header">
 <th align="left">λ</th>
 <th align="left">Effet</th>
 </tr>
 </thead>
 <tbody>
-<tr>
+<tr class="odd">
 <td align="left">0</td>
 <td align="left">Matrice empirique pure (plus de bruit)</td>
 </tr>
-<tr>
+<tr class="even">
 <td align="left">0.15 – 0.30</td>
 <td align="left"><strong>Recommandé</strong> (bon compromis)</td>
 </tr>
-<tr>
+<tr class="odd">
 <td align="left">1</td>
 <td align="left">Cible pure (ignore les données)</td>
 </tr>
@@ -849,17 +1050,17 @@ corrélation moyenne est :</p>
 <h4>Recommandations</h4>
 <table>
 <thead>
-<tr>
+<tr class="header">
 <th align="left">Paramètre</th>
 <th align="left">Valeur recommandée</th>
 </tr>
 </thead>
 <tbody>
-<tr>
+<tr class="odd">
 <td align="left">Shrink Σ</td>
 <td align="left"><code>constcor</code>, λ = 0.20</td>
 </tr>
-<tr>
+<tr class="even">
 <td align="left">Shrink μ</td>
 <td align="left"><code>shrink_mean</code>, λ = 0.40</td>
 </tr>
@@ -918,29 +1119,29 @@ valeur ajoutée.</p>
 <h3>Benchmarks disponibles</h3>
 <table>
 <thead>
-<tr>
+<tr class="header">
 <th align="left">Benchmark</th>
 <th align="left">Description</th>
 <th align="left">Symbole Yahoo</th>
 </tr>
 </thead>
 <tbody>
-<tr>
+<tr class="odd">
 <td align="left"><strong>Equal-Weight</strong></td>
 <td align="left">Répartition égale entre vos actifs</td>
 <td align="left">Calculé</td>
 </tr>
-<tr>
+<tr class="even">
 <td align="left"><strong>S&amp;P 500</strong></td>
 <td align="left">500 plus grandes entreprises US</td>
 <td align="left">^GSPC</td>
 </tr>
-<tr>
+<tr class="odd">
 <td align="left"><strong>MSCI World</strong></td>
 <td align="left">Actions monde développé</td>
 <td align="left">URTH</td>
 </tr>
-<tr>
+<tr class="even">
 <td align="left"><strong>Nasdaq 100</strong></td>
 <td align="left">100 plus grandes tech US</td>
 <td align="left">^NDX</td>
@@ -976,7 +1177,7 @@ valeur</li>
 </div>
 <div id="projection-monte-carlo" class="section level2">
 <h2>Projection Monte Carlo</h2>
-<div id="objectif" class="section level3">
+<div id="objectif-1" class="section level3">
 <h3>Objectif</h3>
 <p>Simuler l’évolution future du portefeuille en tenant compte de :</p>
 <ul>
@@ -1027,24 +1228,24 @@ G}{N}
 <p><strong>Interprétation des probabilités :</strong></p>
 <table>
 <thead>
-<tr>
+<tr class="header">
 <th align="left">Probabilité</th>
 <th align="left">Interprétation</th>
 <th align="left">Indicateur</th>
 </tr>
 </thead>
 <tbody>
-<tr>
+<tr class="odd">
 <td align="left">≥ 70%</td>
 <td align="left">Objectif réaliste</td>
 <td align="left">Vert</td>
 </tr>
-<tr>
+<tr class="even">
 <td align="left">40% – 70%</td>
 <td align="left">Objectif ambitieux</td>
 <td align="left">Orange</td>
 </tr>
-<tr>
+<tr class="odd">
 <td align="left">&lt; 40%</td>
 <td align="left">Objectif difficile</td>
 <td align="left">Rouge</td>
@@ -1123,6 +1324,264 @@ après coûts.</p>
 <hr />
 </div>
 </div>
+<div id="suivi-de-portefeuille-holdings" class="section level2">
+<h2>Suivi de portefeuille (Holdings)</h2>
+<div id="objectif-2" class="section level3">
+<h3>Objectif</h3>
+<p>L’onglet Holdings permet de suivre votre portefeuille réel par
+rapport aux allocations cibles et de calculer les trades nécessaires
+pour rebalancer.</p>
+</div>
+<div id="saisie-des-positions" class="section level3">
+<h3>Saisie des positions</h3>
+<p>Entrez vos positions actuelles dans le tableau :</p>
+<table>
+<thead>
+<tr class="header">
+<th align="left">Ticker</th>
+<th align="left">Quantité</th>
+<th align="left">Prix d’achat</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td align="left">AAPL</td>
+<td align="left">50</td>
+<td align="left">175.00</td>
+</tr>
+<tr class="even">
+<td align="left">MSFT</td>
+<td align="left">30</td>
+<td align="left">380.00</td>
+</tr>
+<tr class="odd">
+<td align="left">NESN.SW</td>
+<td align="left">100</td>
+<td align="left">98.50</td>
+</tr>
+</tbody>
+</table>
+<p>L’application récupère automatiquement les prix actuels pour calculer
+la valeur de marché.</p>
+</div>
+<div id="drift-dérive" class="section level3">
+<h3>Drift (dérive)</h3>
+<p>Le drift mesure l’écart entre vos poids actuels et les poids cibles
+:</p>
+<p><span class="math display">\[
+\text{Drift}_i = |w_i^{\text{actuel}} - w_i^{\text{cible}}|
+\]</span></p>
+<p>Le <strong>drift maximum</strong> est le plus grand écart parmi tous
+les actifs :</p>
+<p><span class="math display">\[
+\text{Max Drift} = \max_i(\text{Drift}_i)
+\]</span></p>
+</div>
+<div id="band-rebalancing-rebalancement-par-bandes" class="section level3">
+<h3>Band Rebalancing (rebalancement par bandes)</h3>
+<p>Au lieu de rebalancer à dates fixes, le band rebalancing déclenche un
+rebalancement uniquement quand le drift dépasse un seuil :</p>
+<table>
+<thead>
+<tr class="header">
+<th align="left">Seuil de drift</th>
+<th align="left">Stratégie</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td align="left">5%</td>
+<td align="left">Conservateur (rebalance souvent)</td>
+</tr>
+<tr class="even">
+<td align="left">10%</td>
+<td align="left">Modéré</td>
+</tr>
+<tr class="odd">
+<td align="left">15%</td>
+<td align="left">Agressif (moins de trades)</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Avantages :</strong> * Réduit les coûts de transaction *
+Rebalance uniquement quand nécessaire * Laisse les gagnants courir un
+peu</p>
+</div>
+<div id="turnover-cap-plafond-de-turnover" class="section level3">
+<h3>Turnover Cap (plafond de turnover)</h3>
+<p>Limite le volume de transactions à chaque rebalancement :</p>
+<p><span class="math display">\[
+w_{\text{ajusté}} = w_{\text{actuel}} + \text{cap} \times
+\frac{w_{\text{cible}} - w_{\text{actuel}}}{\text{turnover}}
+\]</span></p>
+<table>
+<thead>
+<tr class="header">
+<th align="left">Turnover cap</th>
+<th align="left">Effet</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td align="left">10%</td>
+<td align="left">Très progressif</td>
+</tr>
+<tr class="even">
+<td align="left">20%</td>
+<td align="left">Modéré</td>
+</tr>
+<tr class="odd">
+<td align="left">50%</td>
+<td align="left">Rapide</td>
+</tr>
+<tr class="even">
+<td align="left">100%</td>
+<td align="left">Pas de limite</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Utilisation :</strong> Évite de tout vendre/acheter d’un coup
+si le portefeuille a beaucoup dérivé.</p>
+</div>
+<div id="calcul-des-trades" class="section level3">
+<h3>Calcul des trades</h3>
+<p>L’application calcule automatiquement les ordres à passer :</p>
+<table>
+<thead>
+<tr class="header">
+<th align="left">Ticker</th>
+<th align="left">Poids actuel</th>
+<th align="left">Poids cible</th>
+<th align="left">Action</th>
+<th align="left">Montant</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td align="left">AAPL</td>
+<td align="left">35%</td>
+<td align="left">30%</td>
+<td align="left">VENDRE</td>
+<td align="left">-500 CHF</td>
+</tr>
+<tr class="even">
+<td align="left">MSFT</td>
+<td align="left">25%</td>
+<td align="left">30%</td>
+<td align="left">ACHETER</td>
+<td align="left">+500 CHF</td>
+</tr>
+<tr class="odd">
+<td align="left">NESN.SW</td>
+<td align="left">40%</td>
+<td align="left">40%</td>
+<td align="left">-</td>
+<td align="left">0</td>
+</tr>
+</tbody>
+</table>
+<p>Les coûts de transaction estimés sont affichés pour aider à la
+décision.</p>
+<hr />
+</div>
+</div>
+<div id="contraintes-sectorielles" class="section level2">
+<h2>Contraintes sectorielles</h2>
+<div id="objectif-3" class="section level3">
+<h3>Objectif</h3>
+<p>Les contraintes sectorielles permettent de contrôler l’exposition à
+chaque secteur économique, évitant une sur-concentration (ex: 80% en
+tech).</p>
+</div>
+<div id="détection-automatique-des-secteurs" class="section level3">
+<h3>Détection automatique des secteurs</h3>
+<p>L’application détecte automatiquement le secteur de chaque actif via
+l’API Yahoo Finance :</p>
+<table>
+<thead>
+<tr class="header">
+<th align="left">Secteur</th>
+<th align="left">Exemples</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td align="left">Technology</td>
+<td align="left">AAPL, MSFT, GOOGL</td>
+</tr>
+<tr class="even">
+<td align="left">Healthcare</td>
+<td align="left">JNJ, NOVN.SW</td>
+</tr>
+<tr class="odd">
+<td align="left">Consumer Defensive</td>
+<td align="left">NESN.SW, PG</td>
+</tr>
+<tr class="even">
+<td align="left">Financial Services</td>
+<td align="left">UBSG.SW, JPM</td>
+</tr>
+</tbody>
+</table>
+</div>
+<div id="contraintes-minmax" class="section level3">
+<h3>Contraintes min/max</h3>
+<p>Définissez des limites par secteur :</p>
+<table>
+<thead>
+<tr class="header">
+<th align="left">Secteur</th>
+<th align="left">Min</th>
+<th align="left">Max</th>
+<th align="left">Effet</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td align="left">Technology</td>
+<td align="left">0%</td>
+<td align="left">40%</td>
+<td align="left">Limite l’exposition tech</td>
+</tr>
+<tr class="even">
+<td align="left">Healthcare</td>
+<td align="left">10%</td>
+<td align="left">30%</td>
+<td align="left">Garantit une allocation santé</td>
+</tr>
+<tr class="odd">
+<td align="left">Financial Services</td>
+<td align="left">0%</td>
+<td align="left">20%</td>
+<td align="left">Limite l’exposition bancaire</td>
+</tr>
+</tbody>
+</table>
+</div>
+<div id="implémentation-mathématique" class="section level3">
+<h3>Implémentation mathématique</h3>
+<p>Les contraintes sectorielles s’ajoutent au problème d’optimisation
+:</p>
+<p><span class="math display">\[
+\text{Min}_s \leq \sum_{i \in S} w_i \leq \text{Max}_s \quad \forall
+\text{ secteur } s
+\]</span></p>
+<p>où <span class="math inline">\(S\)</span> est l’ensemble des actifs
+appartenant au secteur <span class="math inline">\(s\)</span>.</p>
+</div>
+<div id="cas-dusage" class="section level3">
+<h3>Cas d’usage</h3>
+<ul>
+<li><strong>Diversification forcée</strong> : Éviter plus de 40% dans un
+seul secteur</li>
+<li><strong>Allocation thématique</strong> : Garantir au moins 20% en
+santé</li>
+<li><strong>Gestion du risque</strong> : Limiter l’exposition aux
+secteurs cycliques</li>
+</ul>
+<hr />
+</div>
+</div>
 <div id="guide-des-paramètres" class="section level2">
 <h2>Guide des paramètres</h2>
 <div id="période-danalyse" class="section level3">
@@ -1134,24 +1593,24 @@ après coûts.</p>
 <col width="45%" />
 </colgroup>
 <thead>
-<tr>
+<tr class="header">
 <th align="left">Durée</th>
 <th align="left">Avantages</th>
 <th align="left">Inconvénients</th>
 </tr>
 </thead>
 <tbody>
-<tr>
+<tr class="odd">
 <td align="left"><strong>3 ans</strong></td>
 <td align="left">Réactif aux tendances récentes</td>
 <td align="left">Plus bruité, risque d’overfit</td>
 </tr>
-<tr>
+<tr class="even">
 <td align="left"><strong>5 ans</strong></td>
 <td align="left"><strong>Bon compromis</strong></td>
 <td align="left">-</td>
 </tr>
-<tr>
+<tr class="odd">
 <td align="left"><strong>10 ans</strong></td>
 <td align="left">Très stable</td>
 <td align="left">Peut diluer les régimes récents</td>
@@ -1175,21 +1634,21 @@ tangent</li>
 <p>Contraint la concentration du portefeuille.</p>
 <table>
 <thead>
-<tr>
+<tr class="header">
 <th align="left">wmax</th>
 <th align="left">Effet</th>
 </tr>
 </thead>
 <tbody>
-<tr>
+<tr class="odd">
 <td align="left">1.0</td>
 <td align="left">Pas de contrainte</td>
 </tr>
-<tr>
+<tr class="even">
 <td align="left">0.40</td>
 <td align="left">Max 40% par actif</td>
 </tr>
-<tr>
+<tr class="odd">
 <td align="left">0.25</td>
 <td align="left">Max 25% par actif (diversifié)</td>
 </tr>
@@ -1207,28 +1666,117 @@ chacun est limité à moins de 1/n).</p>
 <li>Impact sur le temps de calcul</li>
 </ul>
 </div>
+<div id="mode-de-sélection-du-portefeuille" class="section level3">
+<h3>Mode de sélection du portefeuille</h3>
+<p>L’application propose deux modes de sélection :</p>
+<p><strong>1. Max Sharpe (défaut)</strong></p>
+<p>Sélectionne automatiquement le portefeuille avec le meilleur ratio de
+Sharpe (tangent portfolio).</p>
+<p><strong>2. Vol Target (volatilité cible)</strong></p>
+<p>Sélectionne le portefeuille ayant une volatilité proche de la cible
+spécifiée :</p>
+<table>
+<thead>
+<tr class="header">
+<th align="left">Vol cible</th>
+<th align="left">Profil</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td align="left">8-10%</td>
+<td align="left">Conservateur</td>
+</tr>
+<tr class="even">
+<td align="left">10-12%</td>
+<td align="left">Modéré</td>
+</tr>
+<tr class="odd">
+<td align="left">12-15%</td>
+<td align="left">Dynamique</td>
+</tr>
+<tr class="even">
+<td align="left">15%+</td>
+<td align="left">Agressif</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Avantage du Vol Target :</strong> Contrôle direct du risque,
+indépendamment des estimations de rendement (souvent bruitées).</p>
+</div>
+<div id="preset-wealth-management" class="section level3">
+<h3>Preset “Wealth Management”</h3>
+<p>Ce preset configure automatiquement des paramètres professionnels
+pour une gestion patrimoniale long terme :</p>
+<table>
+<thead>
+<tr class="header">
+<th align="left">Paramètre</th>
+<th align="left">Valeur</th>
+<th align="left">Justification</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td align="left">Période d’analyse</td>
+<td align="left">10 ans</td>
+<td align="left">Maximum de données pour stabilité</td>
+</tr>
+<tr class="even">
+<td align="left">Poids max</td>
+<td align="left">20%</td>
+<td align="left">Bonne diversification</td>
+</tr>
+<tr class="odd">
+<td align="left">Shrinkage Σ</td>
+<td align="left">Constante Cor. (λ=0.30)</td>
+<td align="left">Stabilise les corrélations</td>
+</tr>
+<tr class="even">
+<td align="left">Shrinkage μ</td>
+<td align="left">Shrink → Mean (λ=0.60)</td>
+<td align="left">Conserve un peu d’alpha</td>
+</tr>
+<tr class="odd">
+<td align="left">Mode</td>
+<td align="left">Vol Target 11%</td>
+<td align="left">Risque contrôlé</td>
+</tr>
+<tr class="even">
+<td align="left">Rebalancing</td>
+<td align="left">Semestriel</td>
+<td align="left">Coûts réduits</td>
+</tr>
+<tr class="odd">
+<td align="left">Taux sans risque</td>
+<td align="left">0.5%</td>
+<td align="left">Taux CHF actuel</td>
+</tr>
+</tbody>
+</table>
+</div>
 <div id="paramètres-de-backtest" class="section level3">
 <h3>Paramètres de backtest</h3>
 <table>
 <thead>
-<tr>
+<tr class="header">
 <th align="left">Paramètre</th>
 <th align="left">Recommandation</th>
 <th align="left">Impact</th>
 </tr>
 </thead>
 <tbody>
-<tr>
+<tr class="odd">
 <td align="left">Fenêtre train</td>
 <td align="left">3 ans</td>
 <td align="left">Données pour estimation</td>
 </tr>
-<tr>
+<tr class="even">
 <td align="left">Rebalancement</td>
 <td align="left">Trimestriel</td>
 <td align="left">Fréquence de mise à jour</td>
 </tr>
-<tr>
+<tr class="odd">
 <td align="left">Coûts (bps)</td>
 <td align="left">10</td>
 <td align="left">Réalisme des résultats</td>
@@ -1252,7 +1800,7 @@ chacun est limité à moins de 1/n).</p>
 <p><strong>Résultat (exemple fictif) :</strong></p>
 <table>
 <thead>
-<tr>
+<tr class="header">
 <th align="left">Portefeuille</th>
 <th align="left">Rendement</th>
 <th align="left">Volatilité</th>
@@ -1260,19 +1808,19 @@ chacun est limité à moins de 1/n).</p>
 </tr>
 </thead>
 <tbody>
-<tr>
+<tr class="odd">
 <td align="left">Tangent</td>
 <td align="left">12.5%</td>
 <td align="left">18.2%</td>
 <td align="left">0.58</td>
 </tr>
-<tr>
+<tr class="even">
 <td align="left">MVP</td>
 <td align="left">8.3%</td>
 <td align="left">14.1%</td>
 <td align="left">0.45</td>
 </tr>
-<tr>
+<tr class="odd">
 <td align="left">Equal-Weight</td>
 <td align="left">10.1%</td>
 <td align="left">16.8%</td>
@@ -1299,7 +1847,7 @@ conservateur.</p>
 <p><strong>Calcul :</strong></p>
 <table>
 <thead>
-<tr>
+<tr class="header">
 <th align="left">Actif</th>
 <th align="left">Poids</th>
 <th align="left">Montant cible</th>
@@ -1309,7 +1857,7 @@ conservateur.</p>
 </tr>
 </thead>
 <tbody>
-<tr>
+<tr class="odd">
 <td align="left">AAPL</td>
 <td align="left">35%</td>
 <td align="left">3’500 CHF</td>
@@ -1317,7 +1865,7 @@ conservateur.</p>
 <td align="left">19</td>
 <td align="left">3’420 CHF</td>
 </tr>
-<tr>
+<tr class="even">
 <td align="left">MSFT</td>
 <td align="left">40%</td>
 <td align="left">4’000 CHF</td>
@@ -1325,7 +1873,7 @@ conservateur.</p>
 <td align="left">10</td>
 <td align="left">3’650 CHF</td>
 </tr>
-<tr>
+<tr class="odd">
 <td align="left">NOVN.SW</td>
 <td align="left">25%</td>
 <td align="left">2’500 CHF</td>
@@ -1333,7 +1881,7 @@ conservateur.</p>
 <td align="left">26</td>
 <td align="left">2’470 CHF</td>
 </tr>
-<tr>
+<tr class="even">
 <td align="left"><strong>Total</strong></td>
 <td align="left">100%</td>
 <td align="left">10’000 CHF</td>
@@ -1352,39 +1900,39 @@ supplémentaires pour minimiser le cash résiduel.</p>
 <p><strong>Résultats (exemple fictif) :</strong></p>
 <table>
 <thead>
-<tr>
+<tr class="header">
 <th align="left">Métrique</th>
 <th align="left">Stratégie</th>
 <th align="left">Equal-Weight</th>
 </tr>
 </thead>
 <tbody>
-<tr>
+<tr class="odd">
 <td align="left">CAGR</td>
 <td align="left">9.2%</td>
 <td align="left">8.5%</td>
 </tr>
-<tr>
+<tr class="even">
 <td align="left">Volatilité</td>
 <td align="left">15.3%</td>
 <td align="left">17.1%</td>
 </tr>
-<tr>
+<tr class="odd">
 <td align="left">Sharpe</td>
 <td align="left">0.47</td>
 <td align="left">0.38</td>
 </tr>
-<tr>
+<tr class="even">
 <td align="left">Sortino</td>
 <td align="left">0.65</td>
 <td align="left">0.52</td>
 </tr>
-<tr>
+<tr class="odd">
 <td align="left">Max Drawdown</td>
 <td align="left">-22%</td>
 <td align="left">-28%</td>
 </tr>
-<tr>
+<tr class="even">
 <td align="left">Turnover</td>
 <td align="left">45%</td>
 <td align="left">0%</td>
@@ -1414,21 +1962,21 @@ ajoutée après ajustement du risque.</p>
 <p><strong>Résultats Monte Carlo (5’000 simulations) :</strong></p>
 <table>
 <thead>
-<tr>
+<tr class="header">
 <th align="left">Quantile</th>
 <th align="left">Valeur finale</th>
 </tr>
 </thead>
 <tbody>
-<tr>
+<tr class="odd">
 <td align="left">p10 (pessimiste)</td>
 <td align="left">145’000 CHF</td>
 </tr>
-<tr>
+<tr class="even">
 <td align="left">p50 (médiane)</td>
 <td align="left">195’000 CHF</td>
 </tr>
-<tr>
+<tr class="odd">
 <td align="left">p90 (optimiste)</td>
 <td align="left">285’000 CHF</td>
 </tr>
@@ -1471,29 +2019,29 @@ de l’optimisation</li>
 <col width="25%" />
 </colgroup>
 <thead>
-<tr>
+<tr class="header">
 <th align="left">Signal</th>
 <th align="left">Interprétation</th>
 <th align="left">Action</th>
 </tr>
 </thead>
 <tbody>
-<tr>
+<tr class="odd">
 <td align="left">Sharpe négatif</td>
 <td align="left">Stratégie sous-performe le cash</td>
 <td align="left">Revoir les paramètres</td>
 </tr>
-<tr>
+<tr class="even">
 <td align="left">Drawdown &gt; 30%</td>
 <td align="left">Risque élevé</td>
 <td align="left">Réduire wmax ou augmenter shrinkage</td>
 </tr>
-<tr>
+<tr class="odd">
 <td align="left">Turnover &gt; 100%</td>
 <td align="left">Coûts élevés</td>
 <td align="left">Augmenter période rebalancement</td>
 </tr>
-<tr>
+<tr class="even">
 <td align="left">Frontière plate</td>
 <td align="left">Actifs très corrélés</td>
 <td align="left">Diversifier les actifs</td>
@@ -1505,7 +2053,7 @@ de l’optimisation</li>
 <h3>Comparaison Sharpe vs Sortino</h3>
 <table>
 <thead>
-<tr>
+<tr class="header">
 <th align="left">Situation</th>
 <th align="left">Sharpe</th>
 <th align="left">Sortino</th>
@@ -1513,19 +2061,19 @@ de l’optimisation</li>
 </tr>
 </thead>
 <tbody>
-<tr>
+<tr class="odd">
 <td align="left">A</td>
 <td align="left">0.8</td>
 <td align="left">1.2</td>
 <td align="left">Volatilité haussière → bon signe</td>
 </tr>
-<tr>
+<tr class="even">
 <td align="left">B</td>
 <td align="left">0.8</td>
 <td align="left">0.6</td>
 <td align="left">Volatilité baissière → prudence</td>
 </tr>
-<tr>
+<tr class="odd">
 <td align="left">C</td>
 <td align="left">0.8</td>
 <td align="left">0.8</td>
@@ -1546,26 +2094,26 @@ de l’optimisation</li>
 <col width="61%" />
 </colgroup>
 <thead>
-<tr>
+<tr class="header">
 <th align="left">Limite</th>
 <th align="left">Description</th>
 </tr>
 </thead>
 <tbody>
-<tr>
+<tr class="odd">
 <td align="left"><strong>Estimation de μ</strong></td>
 <td align="left">Très instable, sensible à la période</td>
 </tr>
-<tr>
+<tr class="even">
 <td align="left"><strong>Normalité</strong></td>
 <td align="left">Les rendements ne sont pas vraiment normaux (queues
 épaisses)</td>
 </tr>
-<tr>
+<tr class="odd">
 <td align="left"><strong>Stationnarité</strong></td>
 <td align="left">Les paramètres changent dans le temps</td>
 </tr>
-<tr>
+<tr class="even">
 <td align="left"><strong>Données historiques</strong></td>
 <td align="left">Le passé ne prédit pas le futur</td>
 </tr>
@@ -1609,99 +2157,136 @@ imprévus</li>
 <col width="63%" />
 </colgroup>
 <thead>
-<tr>
+<tr class="header">
 <th align="left">Terme</th>
 <th align="left">Définition</th>
 </tr>
 </thead>
 <tbody>
-<tr>
+<tr class="odd">
 <td align="left"><strong>Alpha</strong></td>
 <td align="left">Rendement excédentaire par rapport au benchmark</td>
 </tr>
-<tr>
+<tr class="even">
+<td align="left"><strong>Band Rebalancing</strong></td>
+<td align="left">Rebalancement déclenché quand le drift dépasse un
+seuil</td>
+</tr>
+<tr class="odd">
 <td align="left"><strong>Beta</strong></td>
 <td align="left">Sensibilité au marché</td>
 </tr>
-<tr>
+<tr class="even">
 <td align="left"><strong>CAGR</strong></td>
 <td align="left">Compound Annual Growth Rate - Taux de croissance annuel
 composé</td>
 </tr>
-<tr>
+<tr class="odd">
 <td align="left"><strong>Calmar</strong></td>
 <td align="left">Ratio CAGR / Max Drawdown</td>
 </tr>
-<tr>
+<tr class="even">
 <td align="left"><strong>CML</strong></td>
 <td align="left">Capital Market Line - Droite rf → tangent</td>
 </tr>
-<tr>
+<tr class="odd">
 <td align="left"><strong>Covariance</strong></td>
 <td align="left">Mesure de co-mouvement entre actifs</td>
 </tr>
-<tr>
+<tr class="even">
+<td align="left"><strong>CVaR</strong></td>
+<td align="left">Conditional VaR / Expected Shortfall - Perte moyenne
+dans les pires cas</td>
+</tr>
+<tr class="odd">
 <td align="left"><strong>DCA</strong></td>
 <td align="left">Dollar Cost Averaging - Investissement régulier</td>
 </tr>
-<tr>
+<tr class="even">
 <td align="left"><strong>Drawdown</strong></td>
 <td align="left">Perte depuis le plus haut</td>
 </tr>
-<tr>
+<tr class="odd">
+<td align="left"><strong>Drift</strong></td>
+<td align="left">Écart entre poids actuel et poids cible</td>
+</tr>
+<tr class="even">
 <td align="left"><strong>FX</strong></td>
 <td align="left">Foreign Exchange - Taux de change</td>
 </tr>
-<tr>
+<tr class="odd">
 <td align="left"><strong>GBM</strong></td>
 <td align="left">Geometric Brownian Motion - Mouvement brownien
 géométrique</td>
 </tr>
-<tr>
+<tr class="even">
+<td align="left"><strong>Holdings</strong></td>
+<td align="left">Positions réelles détenues en portefeuille</td>
+</tr>
+<tr class="odd">
 <td align="left"><strong>MDD</strong></td>
 <td align="left">Maximum Drawdown - Pire perte depuis un sommet</td>
 </tr>
-<tr>
+<tr class="even">
 <td align="left"><strong>MVP</strong></td>
 <td align="left">Minimum Variance Portfolio</td>
 </tr>
-<tr>
+<tr class="odd">
 <td align="left"><strong>QP</strong></td>
 <td align="left">Quadratic Programming - Programmation quadratique</td>
 </tr>
-<tr>
+<tr class="even">
 <td align="left"><strong>Sharpe</strong></td>
 <td align="left">Ratio rendement excédentaire / volatilité</td>
 </tr>
-<tr>
+<tr class="odd">
 <td align="left"><strong>Shrinkage</strong></td>
 <td align="left">Technique de régularisation statistique</td>
 </tr>
-<tr>
+<tr class="even">
 <td align="left"><strong>Sortino</strong></td>
 <td align="left">Comme Sharpe mais volatilité downside uniquement</td>
 </tr>
-<tr>
+<tr class="odd">
+<td align="left"><strong>Stress Test</strong></td>
+<td align="left">Simulation de crises historiques sur le
+portefeuille</td>
+</tr>
+<tr class="even">
 <td align="left"><strong>Tangent</strong></td>
 <td align="left">Portefeuille maximisant le Sharpe</td>
 </tr>
-<tr>
+<tr class="odd">
 <td align="left"><strong>Turnover</strong></td>
 <td align="left">Rotation du portefeuille</td>
 </tr>
-<tr>
+<tr class="even">
+<td align="left"><strong>Turnover Cap</strong></td>
+<td align="left">Limite sur le volume de transactions par
+rebalancement</td>
+</tr>
+<tr class="odd">
+<td align="left"><strong>VaR</strong></td>
+<td align="left">Value at Risk - Perte maximale à un niveau de
+confiance</td>
+</tr>
+<tr class="even">
 <td align="left"><strong>Vol</strong></td>
 <td align="left">Volatilité - Écart-type des rendements</td>
 </tr>
-<tr>
+<tr class="odd">
+<td align="left"><strong>Vol Target</strong></td>
+<td align="left">Mode de sélection par volatilité cible</td>
+</tr>
+<tr class="even">
 <td align="left"><strong>Walk-forward</strong></td>
 <td align="left">Backtest avec ré-estimation périodique</td>
 </tr>
-<tr>
+<tr class="odd">
 <td align="left"><strong>Win Rate</strong></td>
 <td align="left">Proportion de jours positifs</td>
 </tr>
-<tr>
+<tr class="even">
 <td align="left"><strong>Winsorization</strong></td>
 <td align="left">Troncature des valeurs extrêmes</td>
 </tr>
@@ -1744,8 +2329,509 @@ Naive Diversification: How Inefficient is the 1/N Portfolio Strategy?”.
 <li>Yahoo Finance API : Prix historiques et taux de change</li>
 </ul>
 <hr />
-<p><strong>Version</strong> : V10</p>
-<p><strong>Dernière mise à jour</strong> : Janvier 2025</p>
+</div>
+</div>
+<div id="guide-du-débutant-exemple-pas-à-pas" class="section level2">
+<h2>Guide du débutant : Exemple pas à pas</h2>
+<p>Ce guide vous accompagne dans la création de votre premier
+portefeuille optimisé, en utilisant un exemple concret avec des actions
+réelles.</p>
+<div id="scénario-de-lexemple" class="section level3">
+<h3>Scénario de l’exemple</h3>
+<p>Imaginons que vous disposez de <strong>100’000 CHF</strong> à
+investir et que vous souhaitez créer un portefeuille diversifié avec les
+actions suivantes :</p>
+<ul>
+<li><strong>Tech US</strong> : AAPL (Apple), MSFT (Microsoft), GOOGL
+(Google)</li>
+<li><strong>Suisse</strong> : NESN.SW (Nestlé), NOVN.SW (Novartis),
+UBSG.SW (UBS)</li>
+<li><strong>Diversification</strong> : JNJ (Johnson &amp; Johnson), PG
+(Procter &amp; Gamble)</li>
+</ul>
+<hr />
+</div>
+<div id="étape-1-configuration-des-paramètres-panneau-latéral-gauche" class="section level3">
+<h3>Étape 1 : Configuration des paramètres (panneau latéral gauche)</h3>
+<div id="saisie-des-tickers" class="section level4">
+<h4>1.1 Saisie des tickers</h4>
+<p>Dans le champ <strong>“Tickers”</strong>, entrez :</p>
+<pre><code>AAPL MSFT GOOGL NESN.SW NOVN.SW UBSG.SW JNJ PG</code></pre>
+<p><em>Astuce : Pour les actions suisses, vous pouvez taper “NESTLE”,
+“NOVARTIS”, “UBS” et cocher “Utiliser aliases CH” - l’application les
+convertira automatiquement.</em></p>
+</div>
+<div id="période-danalyse-1" class="section level4">
+<h4>1.2 Période d’analyse</h4>
+<ul>
+<li><strong>Date début</strong> : Choisissez une période de 5-10 ans
+(ex: 2019-01-01)</li>
+<li><strong>Date fin</strong> : Aujourd’hui</li>
+</ul>
+<p><em>Plus la période est longue, plus les estimations sont robustes,
+mais moins elles reflètent les conditions actuelles du marché.</em></p>
+</div>
+<div id="devise-et-taux-sans-risque" class="section level4">
+<h4>1.3 Devise et taux sans risque</h4>
+<ul>
+<li><strong>Devise de base</strong> : CHF (votre devise de
+référence)</li>
+<li><strong>Taux sans risque</strong> : 0.5% (taux actuel en
+Suisse)</li>
+</ul>
+</div>
+<div id="contraintes-de-poids" class="section level4">
+<h4>1.4 Contraintes de poids</h4>
+<ul>
+<li><strong>Poids max par actif</strong> : 25% (évite la
+sur-concentration)</li>
+<li><strong>Poids min</strong> : 0% (pas de vente à découvert)</li>
+</ul>
+</div>
+<div id="paramètres-de-robustesse" class="section level4">
+<h4>1.5 Paramètres de robustesse</h4>
+<p>Pour un débutant, utilisez ces réglages recommandés :</p>
+<ul>
+<li><strong>Méthode Σ (covariance)</strong> : “Constante Cor.” avec λ =
+0.25</li>
+<li><strong>Méthode μ (rendements)</strong> : “Shrink → Mean” avec λ =
+0.50</li>
+</ul>
+<p><em>Ces paramètres “shrinkent” les estimations vers des valeurs plus
+stables, réduisant le risque d’erreur d’estimation.</em></p>
+</div>
+<div id="cliquez-sur-optimiser" class="section level4">
+<h4>1.6 Cliquez sur “Optimiser”</h4>
+<p>Le bouton vert lance l’optimisation. Attendez quelques secondes
+pendant le téléchargement des données.</p>
+<hr />
+</div>
+</div>
+<div id="étape-2-onglet-frontière-efficiente" class="section level3">
+<h3>Étape 2 : Onglet “Frontière Efficiente”</h3>
+<p>Cet onglet affiche le cœur de la théorie de Markowitz.</p>
+<div id="ce-que-vous-voyez" class="section level4">
+<h4>Ce que vous voyez :</h4>
+<ul>
+<li><strong>Courbe bleue</strong> : La frontière efficiente - tous les
+portefeuilles optimaux</li>
+<li><strong>Point rouge “MSR”</strong> : Maximum Sharpe Ratio - le
+meilleur rendement/risque</li>
+<li><strong>Point vert “GMV”</strong> : Global Minimum Variance - le
+moins risqué</li>
+<li><strong>Points gris</strong> : Les actifs individuels</li>
+<li><strong>Ligne pointillée</strong> : La “Capital Market Line” partant
+du taux sans risque</li>
+</ul>
+</div>
+<div id="comment-interpréter" class="section level4">
+<h4>Comment interpréter :</h4>
+<ol style="list-style-type: decimal">
+<li>Regardez où se situent vos actifs individuels (points gris)</li>
+<li>Notez que la frontière est TOUJOURS au-dessus et à gauche des actifs
+individuels → La diversification améliore toujours le ratio
+rendement/risque</li>
+<li>Le point MSR est généralement le meilleur choix pour un investisseur
+rationnel</li>
+</ol>
+</div>
+<div id="mode-de-sélection" class="section level4">
+<h4>Mode de sélection :</h4>
+<ul>
+<li><strong>Max Sharpe (défaut)</strong> : Sélectionne automatiquement
+le portefeuille MSR</li>
+<li><strong>Vol Target</strong> : Permet de choisir une volatilité cible
+(ex: 12%)</li>
+</ul>
+</div>
+<div id="tableau-des-allocations" class="section level4">
+<h4>Tableau des allocations :</h4>
+<p>Sous le graphique, vous verrez les poids recommandés. Par exemple
+:</p>
+<table>
+<thead>
+<tr class="header">
+<th align="left">Ticker</th>
+<th align="left">Poids</th>
+<th align="left">Valeur (CHF)</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td align="left">AAPL</td>
+<td align="left">18.5%</td>
+<td align="left">18’500</td>
+</tr>
+<tr class="even">
+<td align="left">MSFT</td>
+<td align="left">22.3%</td>
+<td align="left">22’300</td>
+</tr>
+<tr class="odd">
+<td align="left">GOOGL</td>
+<td align="left">8.2%</td>
+<td align="left">8’200</td>
+</tr>
+<tr class="even">
+<td align="left">NESN.SW</td>
+<td align="left">15.1%</td>
+<td align="left">15’100</td>
+</tr>
+<tr class="odd">
+<td align="left">NOVN.SW</td>
+<td align="left">12.4%</td>
+<td align="left">12’400</td>
+</tr>
+<tr class="even">
+<td align="left">UBSG.SW</td>
+<td align="left">5.0%</td>
+<td align="left">5’000</td>
+</tr>
+<tr class="odd">
+<td align="left">JNJ</td>
+<td align="left">10.5%</td>
+<td align="left">10’500</td>
+</tr>
+<tr class="even">
+<td align="left">PG</td>
+<td align="left">8.0%</td>
+<td align="left">8’000</td>
+</tr>
+</tbody>
+</table>
+<p><em>Note : Ces valeurs sont illustratives et changeront selon les
+données réelles.</em></p>
+<hr />
+</div>
+</div>
+<div id="étape-3-onglet-monte-carlo" class="section level3">
+<h3>Étape 3 : Onglet “Monte-Carlo”</h3>
+<p>Cet onglet simule l’évolution future de votre portefeuille.</p>
+<div id="configuration" class="section level4">
+<h4>Configuration :</h4>
+<ul>
+<li><strong>Horizon</strong> : 5 ans (projection sur 5 ans)</li>
+<li><strong>Simulations</strong> : 1000 (nombre de scénarios
+simulés)</li>
+<li><strong>Capital initial</strong> : 100’000 CHF</li>
+</ul>
+</div>
+<div id="ce-que-vous-voyez-1" class="section level4">
+<h4>Ce que vous voyez :</h4>
+<ul>
+<li><strong>Faisceau de courbes</strong> : 1000 trajectoires possibles
+de votre portefeuille</li>
+<li><strong>Ligne centrale (médiane)</strong> : Le scénario “moyen”</li>
+<li><strong>Bandes colorées</strong> : Intervalles de confiance
+(5%-95%)</li>
+</ul>
+</div>
+<div id="comment-interpréter-1" class="section level4">
+<h4>Comment interpréter :</h4>
+<p>Si après 5 ans vous voyez :</p>
+<ul>
+<li><strong>Médiane à 145’000 CHF</strong> → Rendement attendu de
++45%</li>
+<li><strong>Percentile 5% à 85’000 CHF</strong> → Dans le pire des cas
+(5%), vous perdez 15%</li>
+<li><strong>Percentile 95% à 220’000 CHF</strong> → Dans le meilleur
+cas, vous doublez</li>
+</ul>
+<p><em>Attention : Ces projections sont basées sur les données
+historiques et ne garantissent pas les performances futures.</em></p>
+<hr />
+</div>
+</div>
+<div id="étape-4-onglet-backtest" class="section level3">
+<h3>Étape 4 : Onglet “Backtest”</h3>
+<p>Le backtest simule comment votre stratégie aurait performé dans le
+passé.</p>
+<div id="configuration-recommandée-pour-débutants" class="section level4">
+<h4>Configuration recommandée pour débutants :</h4>
+<ul>
+<li><strong>Période training</strong> : 3 ans (données pour
+optimiser)</li>
+<li><strong>Période test</strong> : 2 ans (données pour valider)</li>
+<li><strong>Fréquence rebalancing</strong> : Trimestriel (4x/an)</li>
+<li><strong>Coûts de transaction</strong> : 10 bps (0.10%)</li>
+</ul>
+</div>
+<div id="ce-que-vous-voyez-2" class="section level4">
+<h4>Ce que vous voyez :</h4>
+<ol style="list-style-type: decimal">
+<li><strong>Graphique de performance</strong> : Évolution de 100 CHF
+investis
+<ul>
+<li>Ligne bleue : Votre portefeuille optimisé</li>
+<li>Ligne grise : Benchmark (équipondéré ou SPY)</li>
+</ul></li>
+<li><strong>Tableau de métriques</strong> :
+<ul>
+<li><strong>Rendement annualisé</strong> : Performance moyenne par
+an</li>
+<li><strong>Volatilité</strong> : Risque (écart-type annualisé)</li>
+<li><strong>Sharpe Ratio</strong> : Rendement ajusté du risque (&gt;1 =
+bon)</li>
+<li><strong>Max Drawdown</strong> : Pire perte depuis un pic (-20% = a
+perdu 20% max)</li>
+<li><strong>CVaR 95%</strong> : Perte moyenne dans les 5% pires
+jours</li>
+</ul></li>
+</ol>
+</div>
+<div id="comment-interpréter-2" class="section level4">
+<h4>Comment interpréter :</h4>
+<p>Comparez votre portefeuille au benchmark :</p>
+<ul>
+<li>Si Sharpe(portefeuille) &gt; Sharpe(benchmark) → L’optimisation
+ajoute de la valeur</li>
+<li>Si Max Drawdown est similaire → Le risque est comparable</li>
+<li>Si la courbe bleue est au-dessus de la grise → Surperformance
+historique</li>
+</ul>
+<hr />
+</div>
+</div>
+<div id="étape-5-onglet-stress-test" class="section level3">
+<h3>Étape 5 : Onglet “Stress Test”</h3>
+<p>Testez la résistance de votre portefeuille face aux crises
+historiques.</p>
+<div id="scénarios-disponibles-1" class="section level4">
+<h4>Scénarios disponibles :</h4>
+<table>
+<thead>
+<tr class="header">
+<th align="left">Crise</th>
+<th align="left">Période</th>
+<th align="left">Impact typique</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td align="left">GFC 2008</td>
+<td align="left">Sep-Nov 2008</td>
+<td align="left">-46% à -50%</td>
+</tr>
+<tr class="even">
+<td align="left">COVID 2020</td>
+<td align="left">Fév-Mar 2020</td>
+<td align="left">-34% à -35%</td>
+</tr>
+<tr class="odd">
+<td align="left">Euro Crisis 2011</td>
+<td align="left">Juil-Sep 2011</td>
+<td align="left">-18% à -20%</td>
+</tr>
+<tr class="even">
+<td align="left">Taper Tantrum 2013</td>
+<td align="left">Mai-Juin 2013</td>
+<td align="left">-5% à -7%</td>
+</tr>
+<tr class="odd">
+<td align="left">China Deval 2015</td>
+<td align="left">Août 2015</td>
+<td align="left">-10% à -12%</td>
+</tr>
+<tr class="even">
+<td align="left">Vol Shock 2018</td>
+<td align="left">Déc 2018</td>
+<td align="left">-15% à -20%</td>
+</tr>
+</tbody>
+</table>
+</div>
+<div id="comment-utiliser" class="section level4">
+<h4>Comment utiliser :</h4>
+<ol style="list-style-type: decimal">
+<li>Sélectionnez un scénario (ex: “COVID 2020”)</li>
+<li>Cliquez “Lancer Stress Test”</li>
+<li>Observez l’impact estimé sur votre portefeuille</li>
+</ol>
+</div>
+<div id="interprétation-1" class="section level4">
+<h4>Interprétation :</h4>
+<p>Si votre portefeuille affiche -28% pendant COVID contre -34% pour le
+S&amp;P500 :</p>
+<ul>
+<li>Votre diversification a réduit les pertes de 6 points</li>
+<li>Demandez-vous : “Puis-je supporter une perte de -28% sans paniquer
+?”</li>
+</ul>
+<hr />
+</div>
+</div>
+<div id="étape-6-onglet-holdings-suivi-du-portefeuille" class="section level3">
+<h3>Étape 6 : Onglet “Holdings” (suivi du portefeuille)</h3>
+<p>Une fois que vous avez investi, cet onglet vous aide à suivre votre
+portefeuille réel.</p>
+<div id="saisie-de-vos-positions-actuelles" class="section level4">
+<h4>Saisie de vos positions actuelles :</h4>
+<p>Dans le tableau “Holdings actuels”, entrez vos positions réelles
+:</p>
+<table>
+<thead>
+<tr class="header">
+<th align="left">Ticker</th>
+<th align="left">Quantité</th>
+<th align="left">Prix d’achat</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td align="left">AAPL</td>
+<td align="left">100</td>
+<td align="left">175.50</td>
+</tr>
+<tr class="even">
+<td align="left">MSFT</td>
+<td align="left">55</td>
+<td align="left">380.00</td>
+</tr>
+<tr class="odd">
+<td align="left">NESN.SW</td>
+<td align="left">150</td>
+<td align="left">98.50</td>
+</tr>
+<tr class="even">
+<td align="left">…</td>
+<td align="left">…</td>
+<td align="left">…</td>
+</tr>
+</tbody>
+</table>
+</div>
+<div id="ce-que-vous-voyez-3" class="section level4">
+<h4>Ce que vous voyez :</h4>
+<ul>
+<li><strong>Poids actuels vs cibles</strong> : Graphique comparatif</li>
+<li><strong>Drift par actif</strong> : Écart entre position actuelle et
+cible</li>
+<li><strong>Trades recommandés</strong> : Achats/ventes pour revenir à
+la cible</li>
+</ul>
+</div>
+<div id="rebalancing" class="section level4">
+<h4>Rebalancing :</h4>
+<p>Configurez vos règles de rebalancing :</p>
+<ul>
+<li><strong>Seuil de drift</strong> : 5% (rebalance si un actif dévie de
+plus de 5%)</li>
+<li><strong>Turnover cap</strong> : 20% (limite les transactions à 20%
+du portefeuille)</li>
+</ul>
+<p>Si le drift dépasse le seuil, l’application vous suggère les trades à
+exécuter.</p>
+<hr />
+</div>
+</div>
+<div id="étape-7-utiliser-les-presets" class="section level3">
+<h3>Étape 7 : Utiliser les presets</h3>
+<p>Pour simplifier, utilisez les profils prédéfinis :</p>
+<div id="bouton-wealth-management-recommandé" class="section level4">
+<h4>Bouton “Wealth Management” (recommandé)</h4>
+<p>Ce preset applique automatiquement des paramètres professionnels
+:</p>
+<ul>
+<li>Période d’analyse : 10 ans</li>
+<li>Poids max : 20%</li>
+<li>Shrinkage covariance : Constante Cor. (λ=0.30)</li>
+<li>Shrinkage rendements : Shrink → Mean (λ=0.60)</li>
+<li>Mode : Vol Target à 11%</li>
+<li>Rebalancing : Semestriel</li>
+</ul>
+<p><em>Ce profil est conçu pour une gestion patrimoniale long terme,
+privilégiant la robustesse à la maximisation du rendement.</em></p>
+<hr />
+</div>
+</div>
+<div id="résumé-du-workflow" class="section level3">
+<h3>Résumé du workflow</h3>
+<ol style="list-style-type: decimal">
+<li><strong>Définir</strong> : Entrez vos tickers et paramètres (ou
+utilisez un preset)</li>
+<li><strong>Optimiser</strong> : Cliquez le bouton vert</li>
+<li><strong>Analyser</strong> : Étudiez la frontière efficiente et les
+allocations</li>
+<li><strong>Projeter</strong> : Utilisez Monte-Carlo pour voir les
+scénarios futurs</li>
+<li><strong>Valider</strong> : Lancez un backtest pour vérifier la
+stratégie</li>
+<li><strong>Stress-tester</strong> : Vérifiez la résistance aux
+crises</li>
+<li><strong>Implémenter</strong> : Achetez selon les poids
+recommandés</li>
+<li><strong>Suivre</strong> : Utilisez Holdings pour monitorer et
+rebalancer</li>
+</ol>
+<hr />
+</div>
+<div id="erreurs-courantes-à-éviter" class="section level3">
+<h3>Erreurs courantes à éviter</h3>
+<table>
+<colgroup>
+<col width="16%" />
+<col width="62%" />
+<col width="20%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th align="left">Erreur</th>
+<th align="left">Pourquoi c’est problématique</th>
+<th align="left">Solution</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td align="left">Période trop courte</td>
+<td align="left">Estimations instables, biais récent</td>
+<td align="left">Utilisez minimum 5 ans de données</td>
+</tr>
+<tr class="even">
+<td align="left">Pas de shrinkage</td>
+<td align="left">Sur-ajustement aux données passées</td>
+<td align="left">Activez shrinkage Σ et μ</td>
+</tr>
+<tr class="odd">
+<td align="left">Poids max trop élevé</td>
+<td align="left">Sur-concentration risquée</td>
+<td align="left">Limitez à 20-25% par actif</td>
+</tr>
+<tr class="even">
+<td align="left">Ignorer les coûts</td>
+<td align="left">Performance irréaliste</td>
+<td align="left">Incluez 10-20 bps de coûts</td>
+</tr>
+<tr class="odd">
+<td align="left">Rebalancer trop souvent</td>
+<td align="left">Coûts de transaction élevés</td>
+<td align="left">Trimestriel ou semestriel suffit</td>
+</tr>
+<tr class="even">
+<td align="left">Ignorer le stress test</td>
+<td align="left">Surpris par les crises</td>
+<td align="left">Vérifiez votre tolérance aux pertes</td>
+</tr>
+</tbody>
+</table>
+<hr />
+</div>
+<div id="conseils-finaux" class="section level3">
+<h3>Conseils finaux</h3>
+<ul>
+<li><strong>Commencez simple</strong> : 6-10 actifs suffisent pour une
+bonne diversification</li>
+<li><strong>Soyez patient</strong> : L’optimisation Markowitz est une
+stratégie long terme</li>
+<li><strong>Restez discipliné</strong> : Suivez les règles de
+rebalancing sans émotion</li>
+<li><strong>Diversifiez les sources</strong> : Mélangez régions,
+secteurs et classes d’actifs</li>
+<li><strong>Révisez annuellement</strong> : Vos objectifs et tolérance
+au risque peuvent changer</li>
+</ul>
+<hr />
+<p><strong>Version</strong> : V13</p>
+<p><strong>Dernière mise à jour</strong> : Février 2025</p>
 <p><strong>Application</strong> : Markowitz Portfolio Optimizer</p>
 </div>
 </div>
