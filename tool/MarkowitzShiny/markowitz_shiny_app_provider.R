@@ -453,11 +453,122 @@ library(modulr)
               sliderInput("mu_lambda", "Intensité λ", min = 0, max = 1, value = 0.40, step = 0.05),
               tags$div(class = "form-text", "λ=0: μ brut | λ=1: μ cible. Reco: 0.30-0.60")
             ),
-            
+
             tags$hr(),
-            
+
+            tags$div(
+              class = "section-header",
+              tags$i(class = "fas fa-industry"),
+              tags$h5("Contraintes sectorielles")
+            ),
+
+            checkboxInput(
+              "use_sector_constraints",
+              tags$span(tags$i(class = "fas fa-check-square"), " Activer limites sectorielles"),
+              value = FALSE
+            ),
+
+            conditionalPanel(
+              condition = "input.use_sector_constraints == true",
+
+              sliderInput(
+                "sector_max_tech",
+                tags$span(tags$i(class = "fas fa-microchip"), " Max Technology (%)"),
+                min = 10, max = 100, value = 35, step = 5, post = "%"
+              ),
+
+              sliderInput(
+                "sector_max_finance",
+                tags$span(tags$i(class = "fas fa-university"), " Max Financial (%)"),
+                min = 10, max = 100, value = 30, step = 5, post = "%"
+              ),
+
+              sliderInput(
+                "sector_max_healthcare",
+                tags$span(tags$i(class = "fas fa-heartbeat"), " Max Healthcare (%)"),
+                min = 10, max = 100, value = 30, step = 5, post = "%"
+              ),
+
+              sliderInput(
+                "sector_max_consumer",
+                tags$span(tags$i(class = "fas fa-shopping-cart"), " Max Consumer (%)"),
+                min = 10, max = 100, value = 30, step = 5, post = "%"
+              ),
+
+              tags$div(class = "form-text", "Limite l'exposition par secteur pour la diversification.")
+            ),
+
+            tags$hr(),
+
+            tags$div(
+              class = "section-header",
+              tags$i(class = "fas fa-bullseye"),
+              tags$h5("Mode de sélection")
+            ),
+
+            radioButtons(
+              "selection_mode",
+              NULL,
+              choices = c(
+                "Max Sharpe (rendement/risque)" = "sharpe",
+                "Vol cible (contrôle du risque)" = "vol_target"
+              ),
+              selected = "sharpe"
+            ),
+
+            conditionalPanel(
+              condition = "input.selection_mode == 'vol_target'",
+              sliderInput(
+                "target_vol",
+                tags$span(tags$i(class = "fas fa-tachometer-alt"), " Volatilité cible (%)"),
+                min = 5, max = 40, value = 15, step = 1, post = "%"
+              ),
+              tags$div(class = "form-text", "Le portefeuille sera choisi pour approcher cette volatilité.")
+            ),
+
+            tags$hr(),
+
+            tags$div(
+              class = "section-header",
+              tags$i(class = "fas fa-magic"),
+              tags$h5("Presets")
+            ),
+
             actionButton(
-              "run", 
+              "preset_longterm",
+              tags$span(tags$i(class = "fas fa-user-tie"), " Wealth Management"),
+              class = "btn-outline-success w-100",
+              style = "margin-bottom: 0.5rem;"
+            ),
+            tags$div(class = "form-text", "Profil gestionnaire: horizon 10 ans, vol cible ~11%, rebal semestriel."),
+
+            tags$hr(),
+
+            tags$div(
+              class = "section-header",
+              tags$i(class = "fas fa-save"),
+              tags$h5("Préférences")
+            ),
+
+            tags$div(
+              class = "d-flex gap-2",
+              actionButton(
+                "save_settings",
+                tags$span(tags$i(class = "fas fa-download"), " Sauvegarder"),
+                class = "btn-secondary flex-grow-1"
+              ),
+              actionButton(
+                "load_settings",
+                tags$span(tags$i(class = "fas fa-upload"), " Charger"),
+                class = "btn-secondary flex-grow-1"
+              )
+            ),
+            tags$div(class = "form-text", "Sauvegarde locale des paramètres."),
+
+            tags$hr(),
+
+            actionButton(
+              "run",
               tags$span(
                 tags$i(class = "fas fa-play-circle", style = "margin-right: 8px;"),
                 "Calculer l'optimisation"
@@ -695,14 +806,36 @@ library(modulr)
             ),
             
             numericInput(
-              "bt_tc_bps", 
+              "bt_tc_bps",
               tags$span(tags$i(class = "fas fa-hand-holding-usd"), " Coût transaction (bps)"),
               value = 10, min = 0, max = 200, step = 5
             ),
             tags$div(class = "form-text", "10 bps = 0.10% par transaction."),
-            
+
             tags$hr(),
-            
+
+            tags$div(
+              class = "section-header",
+              tags$i(class = "fas fa-balance-scale-right"),
+              tags$h5("Band Rebalancing")
+            ),
+
+            sliderInput(
+              "bt_drift_threshold",
+              tags$span(tags$i(class = "fas fa-arrows-alt-h"), " Seuil de drift (%)"),
+              min = 0, max = 20, value = 5, step = 1, post = "%"
+            ),
+            tags$div(class = "form-text", "Rebalance seulement si drift max > seuil. 0 = toujours rebalancer."),
+
+            sliderInput(
+              "bt_turnover_cap",
+              tags$span(tags$i(class = "fas fa-hand-paper"), " Cap turnover (%)"),
+              min = 0, max = 100, value = 100, step = 5, post = "%"
+            ),
+            tags$div(class = "form-text", "Limite le turnover par période. 100% = pas de limite."),
+
+            tags$hr(),
+
             tags$div(
               class = "section-header",
               tags$i(class = "fas fa-crosshairs"),
@@ -762,17 +895,136 @@ library(modulr)
             card(
               card_header(tags$span(tags$i(class = "fas fa-chart-area"), " Drawdowns historiques")),
               card_body(plotOutput("bt_drawdown_plot", height = 250))
+            ),
+
+            # V13: Stress Testing
+            card(
+              card_header(tags$span(tags$i(class = "fas fa-bolt"), " Stress Testing - Scénarios de crise")),
+              card_body(
+                tags$p(class = "text-muted small",
+                       "Impact estimé du portefeuille sélectionné sous différents scénarios de crise historiques."),
+                tableOutput("stress_test_table"),
+                tags$hr(),
+                uiOutput("stress_test_note")
+              )
             )
           )
         )
       ),
-      
+
       # =========================================================================
-      # ONGLET 4 : DOCUMENTATION
+      # ONGLET 4 : HOLDINGS TRACKING (V11)
+      # =========================================================================
+      nav_panel(
+        title = tags$span(tags$i(class = "fas fa-briefcase"), " Holdings"),
+
+        layout_sidebar(
+          sidebar = sidebar(
+            width = 380,
+
+            tags$div(
+              class = "section-header",
+              tags$i(class = "fas fa-edit"),
+              tags$h5("Mes positions réelles")
+            ),
+
+            tags$div(
+              class = "alert alert-info", style = "padding: 0.75rem;",
+              tags$i(class = "fas fa-info-circle"),
+              " Entrez vos positions actuelles pour voir le drift vs l'allocation cible."
+            ),
+
+            textAreaInput(
+              "holdings_input",
+              tags$span(tags$i(class = "fas fa-list-ol"), " Positions (Ticker:Shares:Price)"),
+              value = "",
+              rows = 6,
+              placeholder = "AAPL:10:175.50\nMSFT:5:380.00\nGOOGL:3:140.25"
+            ),
+            tags$div(class = "form-text", "Format: TICKER:NB_ACTIONS:PRIX_ACTUEL (une ligne par position)"),
+
+            tags$hr(),
+
+            numericInput(
+              "holdings_tc_bps",
+              tags$span(tags$i(class = "fas fa-hand-holding-usd"), " Coûts transaction (bps)"),
+              value = 10, min = 0, max = 200, step = 5
+            ),
+
+            tags$hr(),
+
+            actionButton(
+              "calc_rebalance",
+              tags$span(tags$i(class = "fas fa-calculator"), " Calculer le rebalancement"),
+              class = "btn-primary w-100"
+            ),
+
+            tags$hr(),
+
+            downloadButton(
+              "dl_rebalance",
+              tags$span(tags$i(class = "fas fa-file-csv"), " Exporter les trades"),
+              class = "btn-secondary w-100"
+            )
+          ),
+
+          layout_column_wrap(
+            width = 1,
+
+            # KPIs
+            layout_columns(
+              col_widths = c(4, 4, 4),
+
+              card(
+                card_body(
+                  class = "text-center",
+                  tags$div(class = "kpi-label", "VALEUR PORTFOLIO"),
+                  uiOutput("holdings_value")
+                )
+              ),
+
+              card(
+                card_body(
+                  class = "text-center",
+                  tags$div(class = "kpi-label", "DRIFT MAXIMUM"),
+                  uiOutput("holdings_max_drift")
+                )
+              ),
+
+              card(
+                card_body(
+                  class = "text-center",
+                  tags$div(class = "kpi-label", "COÛT REBALANCEMENT"),
+                  uiOutput("holdings_rebal_cost")
+                )
+              )
+            ),
+
+            # Tableau des trades
+            card(
+              card_header(tags$span(tags$i(class = "fas fa-exchange-alt"), " Transactions suggérées")),
+              card_body(
+                tableOutput("holdings_trades_table"),
+                tags$hr(),
+                uiOutput("holdings_note")
+              )
+            ),
+
+            # Graphique comparaison
+            card(
+              card_header(tags$span(tags$i(class = "fas fa-chart-bar"), " Allocation: Actuelle vs Cible")),
+              card_body(plotOutput("holdings_comparison_plot", height = 300))
+            )
+          )
+        )
+      ),
+
+      # =========================================================================
+      # ONGLET 5 : DOCUMENTATION
       # =========================================================================
       nav_panel(
         title = tags$span(tags$i(class = "fas fa-book"), " Documentation"),
-        
+
         layout_column_wrap(
           width = 1,
           card(
@@ -808,9 +1060,12 @@ library(modulr)
         px_chf     = NULL,
         benchmarks = NULL,
         ew_stats   = NULL,
-        
+
         # V10: Stocker les données pour le backtest benchmark
-        rets_chf   = NULL
+        rets_chf   = NULL,
+
+        # V12: Secteurs pour contraintes
+        sectors    = NULL
       )
       
       # ------------------------------------------------------------------------
@@ -939,7 +1194,159 @@ library(modulr)
         dd <- v / peak - 1
         min(dd, na.rm = TRUE)
       }
-      
+
+      # ========================================================================
+      # OBSERVERS: Save/Load Settings (V11)
+      # ========================================================================
+
+      # Load settings on startup (runs once)
+      settings_loaded <- reactiveVal(FALSE)
+
+      observe({
+        if (settings_loaded()) return()
+
+        settings <- Core$load_settings()
+        if (!is.null(settings)) {
+          # Update inputs with saved values
+          if (!is.null(settings$tickers)) updateTextAreaInput(session, "tickers", value = settings$tickers)
+          if (!is.null(settings$use_aliases)) updateCheckboxInput(session, "use_aliases", value = settings$use_aliases)
+          if (!is.null(settings$capital)) updateNumericInput(session, "capital", value = settings$capital)
+          if (!is.null(settings$rf)) updateNumericInput(session, "rf", value = settings$rf)
+          if (!is.null(settings$wmax)) updateSliderInput(session, "wmax", value = settings$wmax)
+          if (!is.null(settings$ngrid)) updateSliderInput(session, "ngrid", value = settings$ngrid)
+          if (!is.null(settings$shrink_method)) updateSelectInput(session, "shrink_method", selected = settings$shrink_method)
+          if (!is.null(settings$shrink_lambda)) updateSliderInput(session, "shrink_lambda", value = settings$shrink_lambda)
+          if (!is.null(settings$mu_method)) updateSelectInput(session, "mu_method", selected = settings$mu_method)
+          if (!is.null(settings$bt_train_years)) updateNumericInput(session, "bt_train_years", value = settings$bt_train_years)
+          if (!is.null(settings$bt_rebal_months)) updateSelectInput(session, "bt_rebal_months", selected = as.character(settings$bt_rebal_months))
+          if (!is.null(settings$bt_tc_bps)) updateNumericInput(session, "bt_tc_bps", value = settings$bt_tc_bps)
+          if (!is.null(settings$bt_drift_threshold)) updateSliderInput(session, "bt_drift_threshold", value = settings$bt_drift_threshold)
+          if (!is.null(settings$bt_turnover_cap)) updateSliderInput(session, "bt_turnover_cap", value = settings$bt_turnover_cap)
+          if (!is.null(settings$holdings)) updateTextAreaInput(session, "holdings_input", value = settings$holdings)
+
+          showNotification("Paramètres chargés depuis la dernière session.", type = "message", duration = 3)
+        }
+        settings_loaded(TRUE)
+      })
+
+      # ========================================================================
+      # PRESET: Long terme robuste (V12) - Profil Wealth Management
+      # ========================================================================
+      observeEvent(input$preset_longterm, {
+        # Paramètres "gestionnaire expérimenté" pour horizon 10+ ans
+        # Basé sur les meilleures pratiques wealth management:
+        # - Historique long (10 ans) pour estimations stables
+        # - Shrinkage modéré pour garder du signal tout en réduisant le bruit
+        # - Concentration limitée (max 20% = min 5 titres significatifs)
+        # - Rebalancement semestriel avec bande de 5%
+
+        # Période d'analyse: 10 ans
+        updateDateRangeInput(session, "dates",
+                             start = Sys.Date() - 365 * 10,
+                             end = Sys.Date())
+
+        # Taux sans risque CHF
+        updateNumericInput(session, "rf", value = 0.005)
+
+        # Concentration max 20%
+        updateSliderInput(session, "wmax", value = 0.20)
+
+        # Robustesse Σ: corrélation constante, λ = 0.30
+        updateSelectInput(session, "shrink_method", selected = "constcor")
+        updateSliderInput(session, "shrink_lambda", value = 0.30)
+
+        # Robustesse μ: shrink vers moyenne (garde du signal), λ = 0.60
+        updateSelectInput(session, "mu_method", selected = "shrink_mean")
+        updateSliderInput(session, "mu_lambda", value = 0.60)
+
+        # Mode sélection: Vol cible 10-12%
+        updateRadioButtons(session, "selection_mode", selected = "vol_target")
+        updateSliderInput(session, "target_vol", value = 11)
+
+        # Backtest: 10 ans training, semestriel, bande 5%
+        updateNumericInput(session, "bt_train_years", value = 10)
+        updateSelectInput(session, "bt_rebal_months", selected = "6")
+        updateNumericInput(session, "bt_tc_bps", value = 10)
+        updateSliderInput(session, "bt_drift_threshold", value = 5)
+        updateSliderInput(session, "bt_turnover_cap", value = 25)
+
+        showNotification(
+          tags$div(
+            tags$strong("Profil 'Wealth Management' appliqué"),
+            tags$br(),
+            tags$small("Horizon 10 ans | wmax 20% | Σ constcor λ=0.30 | μ shrink_mean λ=0.60 | Vol cible ~11%")
+          ),
+          type = "message",
+          duration = 6
+        )
+      })
+
+      # Save settings button
+      observeEvent(input$save_settings, {
+        settings <- list(
+          tickers = input$tickers,
+          use_aliases = input$use_aliases,
+          date_start = as.character(input$dates[1]),
+          date_end = as.character(input$dates[2]),
+          capital = input$capital,
+          rf = input$rf,
+          wmax = input$wmax,
+          ngrid = input$ngrid,
+          shrink_method = input$shrink_method,
+          shrink_lambda = input$shrink_lambda,
+          mu_method = input$mu_method,
+          mu_winsor = input$mu_winsor,
+          mu_lambda = input$mu_lambda,
+          bt_train_years = input$bt_train_years,
+          bt_rebal_months = as.integer(input$bt_rebal_months),
+          bt_tc_bps = input$bt_tc_bps,
+          bt_drift_threshold = input$bt_drift_threshold,
+          bt_turnover_cap = input$bt_turnover_cap,
+          bt_pick_mode = input$bt_pick_mode,
+          holdings = input$holdings_input
+        )
+
+        if (Core$save_settings(settings)) {
+          showNotification("Paramètres sauvegardés avec succès!", type = "message", duration = 3)
+        } else {
+          showNotification("Erreur lors de la sauvegarde.", type = "error", duration = 5)
+        }
+      })
+
+      # Load settings button
+      observeEvent(input$load_settings, {
+        settings <- Core$load_settings()
+        if (is.null(settings)) {
+          showNotification("Aucune sauvegarde trouvée.", type = "warning", duration = 3)
+          return()
+        }
+
+        # Update all inputs
+        if (!is.null(settings$tickers)) updateTextAreaInput(session, "tickers", value = settings$tickers)
+        if (!is.null(settings$use_aliases)) updateCheckboxInput(session, "use_aliases", value = settings$use_aliases)
+        if (!is.null(settings$date_start) && !is.null(settings$date_end)) {
+          updateDateRangeInput(session, "dates", start = settings$date_start, end = settings$date_end)
+        }
+        if (!is.null(settings$capital)) updateNumericInput(session, "capital", value = settings$capital)
+        if (!is.null(settings$rf)) updateNumericInput(session, "rf", value = settings$rf)
+        if (!is.null(settings$wmax)) updateSliderInput(session, "wmax", value = settings$wmax)
+        if (!is.null(settings$ngrid)) updateSliderInput(session, "ngrid", value = settings$ngrid)
+        if (!is.null(settings$shrink_method)) updateSelectInput(session, "shrink_method", selected = settings$shrink_method)
+        if (!is.null(settings$shrink_lambda)) updateSliderInput(session, "shrink_lambda", value = settings$shrink_lambda)
+        if (!is.null(settings$mu_method)) updateSelectInput(session, "mu_method", selected = settings$mu_method)
+        if (!is.null(settings$mu_winsor)) updateSliderInput(session, "mu_winsor", value = settings$mu_winsor)
+        if (!is.null(settings$mu_lambda)) updateSliderInput(session, "mu_lambda", value = settings$mu_lambda)
+        if (!is.null(settings$bt_train_years)) updateNumericInput(session, "bt_train_years", value = settings$bt_train_years)
+        if (!is.null(settings$bt_rebal_months)) updateSelectInput(session, "bt_rebal_months", selected = as.character(settings$bt_rebal_months))
+        if (!is.null(settings$bt_tc_bps)) updateNumericInput(session, "bt_tc_bps", value = settings$bt_tc_bps)
+        if (!is.null(settings$bt_drift_threshold)) updateSliderInput(session, "bt_drift_threshold", value = settings$bt_drift_threshold)
+        if (!is.null(settings$bt_turnover_cap)) updateSliderInput(session, "bt_turnover_cap", value = settings$bt_turnover_cap)
+        if (!is.null(settings$bt_pick_mode)) updateSelectInput(session, "bt_pick_mode", selected = settings$bt_pick_mode)
+        if (!is.null(settings$holdings)) updateTextAreaInput(session, "holdings_input", value = settings$holdings)
+
+        showNotification("Paramètres chargés!", type = "message", duration = 3)
+      })
+
       # ========================================================================
       # OBSERVER : bouton "Calculer"
       # ========================================================================
@@ -1001,10 +1408,50 @@ library(modulr)
               lam <- if (!is.null(input$shrink_lambda)) input$shrink_lambda else 0.20
               est$Sigma <- Core$shrink_covariance(est$Sigma, method = input$shrink_method, lambda = lam)
             }
-            
-            incProgress(0.75, detail = "Construction frontière efficiente")
-            f <- Core$compute_frontier(est$mu, est$Sigma, rf = input$rf, n_grid = input$ngrid, w_max = input$wmax)
-            
+
+            incProgress(0.70, detail = "Construction frontière efficiente")
+
+            # V12: Contraintes sectorielles
+            sector_assignments <- NULL
+            sector_limits <- NULL
+
+            if (isTRUE(input$use_sector_constraints)) {
+              incProgress(0.72, detail = "Récupération secteurs...")
+              sector_assignments <- Core$get_ticker_sectors(tks)
+              rv$sectors <- sector_assignments
+
+              # Construire les limites sectorielles
+              sector_limits <- list()
+              if (!is.null(input$sector_max_tech) && input$sector_max_tech < 100) {
+                sector_limits[["Technology"]] <- input$sector_max_tech / 100
+              }
+              if (!is.null(input$sector_max_finance) && input$sector_max_finance < 100) {
+                sector_limits[["Financial Services"]] <- input$sector_max_finance / 100
+              }
+              if (!is.null(input$sector_max_healthcare) && input$sector_max_healthcare < 100) {
+                sector_limits[["Healthcare"]] <- input$sector_max_healthcare / 100
+              }
+              if (!is.null(input$sector_max_consumer) && input$sector_max_consumer < 100) {
+                sector_limits[["Consumer Cyclical"]] <- input$sector_max_consumer / 100
+                sector_limits[["Consumer Defensive"]] <- input$sector_max_consumer / 100
+              }
+
+              showNotification(
+                paste0("Secteurs détectés: ", paste(unique(sector_assignments), collapse = ", ")),
+                type = "message", duration = 4
+              )
+            }
+
+            # Calculer la frontière (avec ou sans contraintes sectorielles)
+            if (isTRUE(input$use_sector_constraints) && length(sector_limits) > 0) {
+              f <- Core$compute_frontier_sectors(
+                est$mu, est$Sigma, rf = input$rf, n_grid = input$ngrid, w_max = input$wmax,
+                sector_assignments = sector_assignments, sector_limits = sector_limits
+              )
+            } else {
+              f <- Core$compute_frontier(est$mu, est$Sigma, rf = input$rf, n_grid = input$ngrid, w_max = input$wmax)
+            }
+
             df <- tibble::tibble(ret = f$ret, vol = f$vol, sharpe = f$sharpe)
             ord      <- order(df$vol, df$ret)
             df       <- df[ord, , drop = FALSE]
@@ -1065,15 +1512,48 @@ library(modulr)
       # ========================================================================
       output$pick_ui <- renderUI({
         req(rv$frontier, rv$tan_idx)
+
+        # Déterminer la valeur initiale selon le mode
+        initial_idx <- rv$tan_idx
+        if (!is.null(input$selection_mode) && input$selection_mode == "vol_target") {
+          target_vol <- as.numeric(input$target_vol) / 100
+          if (is.finite(target_vol) && target_vol > 0) {
+            # Trouver le portefeuille avec la vol la plus proche
+            vol_diff <- abs(rv$frontier$vol - target_vol)
+            initial_idx <- which.min(vol_diff)
+          }
+        }
+
         tags$div(
           style = "margin-bottom: 1rem;",
           sliderInput(
-            "pick_idx", 
+            "pick_idx",
             tags$span(tags$i(class = "fas fa-hand-pointer", style = "color: #F39C12;"), " Sélectionner un portefeuille"),
-            min = 1, max = nrow(rv$frontier), value = rv$tan_idx, step = 1, width = "100%"
+            min = 1, max = nrow(rv$frontier), value = initial_idx, step = 1, width = "100%"
           )
         )
       })
+
+      # Observer: Mettre à jour la sélection quand on change le mode ou la vol cible
+      observeEvent(list(input$selection_mode, input$target_vol), {
+        req(rv$frontier, input$pick_idx)
+
+        if (is.null(input$selection_mode)) return()
+
+        if (input$selection_mode == "vol_target") {
+          target_vol <- as.numeric(input$target_vol) / 100
+          if (is.finite(target_vol) && target_vol > 0) {
+            vol_diff <- abs(rv$frontier$vol - target_vol)
+            best_idx <- which.min(vol_diff)
+            updateSliderInput(session, "pick_idx", value = best_idx)
+          }
+        } else if (input$selection_mode == "sharpe") {
+          # En mode Sharpe, revenir au portefeuille tangent
+          if (!is.null(rv$tan_idx)) {
+            updateSliderInput(session, "pick_idx", value = rv$tan_idx)
+          }
+        }
+      }, ignoreInit = TRUE)
       
       # ========================================================================
       # Plot frontière efficiente
@@ -1172,7 +1652,26 @@ library(modulr)
         if (sel_i != rv$tan_idx && sel_i != rv$mvp_idx) {
           p <- p + annotate("text", x = sel$vol, y = sel$ret, label = "  Sélection", hjust = 0, vjust = -1.5, color = colors$selection, fontface = "bold", size = 4)
         }
-        
+
+        # V12: Ligne verticale pour la vol cible
+        if (!is.null(input$selection_mode) && input$selection_mode == "vol_target") {
+          target_vol <- as.numeric(input$target_vol) / 100
+          if (is.finite(target_vol) && target_vol > 0) {
+            p <- p +
+              geom_vline(xintercept = target_vol, linetype = "dashed", color = colors$purple, size = 1, alpha = 0.7) +
+              annotate("text", x = target_vol, y = max(df$ret) * 0.98,
+                       label = paste0("Vol cible: ", input$target_vol, "%"),
+                       hjust = -0.1, color = colors$purple, fontface = "bold", size = 3.5)
+          }
+        }
+
+        # Construire le sous-titre selon le mode
+        mode_label <- if (!is.null(input$selection_mode) && input$selection_mode == "vol_target") {
+          paste0("Mode: Vol cible (", input$target_vol, "%) | ")
+        } else {
+          "Mode: Max Sharpe | "
+        }
+
         p <- p +
           scale_x_continuous(labels = scales::percent_format(accuracy = 1), expand = c(0.05, 0)) +
           scale_y_continuous(labels = scales::percent_format(accuracy = 1), expand = c(0.08, 0)) +
@@ -1181,7 +1680,7 @@ library(modulr)
             x = "Volatilité annualisée (σ)",
             y = "Rendement attendu annualisé (μ)",
             title = "Frontière efficiente de Markowitz",
-            subtitle = "● Tangent   ■ MVP   ▲ Sélection   ◆ Benchmarks",
+            subtitle = paste0(mode_label, "● Tangent   ■ MVP   ▲ Sélection   ◆ Benchmarks"),
             caption = paste0("Base: ", base_ccy, " | rf = ", scales::percent(rf_val, 0.1), " | Source: Yahoo Finance")
           )
         
@@ -1235,11 +1734,25 @@ library(modulr)
       # ========================================================================
       build_alloc_table <- function(w) {
         cap <- input$capital
-        tibble::tibble(Ticker = rv$tickers, Poids = w, Montant = w * cap) %>%
+        df <- tibble::tibble(Ticker = rv$tickers, Poids = w, Montant = w * cap)
+
+        # V12: Ajouter les secteurs si disponibles
+        if (!is.null(rv$sectors) && length(rv$sectors) == length(rv$tickers)) {
+          df$Secteur <- rv$sectors[rv$tickers]
+        }
+
+        df <- df %>%
           dplyr::mutate(
             Poids = scales::percent(Poids, accuracy = 0.01),
             Montant = paste0("CHF ", scales::comma(Montant, accuracy = 0.01))
           )
+
+        # Réorganiser les colonnes si secteur présent
+        if ("Secteur" %in% colnames(df)) {
+          df <- df %>% dplyr::select(Ticker, Secteur, Poids, Montant)
+        }
+
+        df
       }
       
       greedy_fill_cash <- function(df, cash_left) {
@@ -1695,58 +2208,73 @@ library(modulr)
                                    train_years, rebal_months, tc_bps,
                                    pick_mode, profile_frac,
                                    shrink_method, shrink_lambda,
-                                   mu_method, mu_winsor, mu_lambda) {
-        
+                                   mu_method, mu_winsor, mu_lambda,
+                                   drift_threshold = 0, turnover_cap = 1) {
+
         rets <- px_chf / xts::lag.xts(px_chf, 1) - 1
         rets <- na.omit(rets)
-        
+
         train_obs <- max(60, as.integer(round(train_years * 252)))
         k_months  <- as.integer(rebal_months)
         if (!is.finite(k_months) || k_months < 1) k_months <- 3
-        
+
         ep <- xts::endpoints(rets, on = "months", k = k_months)
         ep <- ep[ep > 0]
         ep <- unique(c(ep, nrow(rets)))
         ep <- ep[ep >= train_obs]
-        
+
         if (length(ep) < 2) stop("Backtest impossible: fenêtre d'apprentissage trop longue vs historique.")
-        
+
         n_assets <- ncol(rets)
         w_prev <- rep(0, n_assets)
-        
+        w_actual <- rep(0, n_assets)  # V11: Poids réels après drift
+
         dates_all <- c()
         values_all <- c()
-        
+
         V <- cap0
         tc_rate <- as.numeric(tc_bps) / 10000
         if (!is.finite(tc_rate) || tc_rate < 0) tc_rate <- 0
-        
+
         turnover_acc <- 0
-        
+        rebal_count <- 0  # V11: compteur de rebalancements effectués
+        skipped_count <- 0  # V11: compteur de rebalancements évités
+
         first_date_idx <- ep[1] + 1
-        
+
         for (i in seq_len(length(ep) - 1)) {
-          
+
           reb_pos  <- ep[i]
           next_pos <- ep[i + 1]
-          
+
+          # V11: Calculer les poids après drift (si ce n'est pas la première période)
+          if (i > 1 && sum(w_actual) > 0) {
+            seg_prev <- rets[(ep[i-1] + 1):reb_pos, , drop = FALSE]
+            if (nrow(seg_prev) > 0) {
+              cumret <- apply(1 + as.matrix(seg_prev), 2, prod)
+              w_drifted <- w_actual * cumret
+              w_drifted <- w_drifted / sum(w_drifted)
+              w_actual <- w_drifted
+            }
+          }
+
           train_slice <- rets[(reb_pos - train_obs + 1):reb_pos, , drop = FALSE]
-          
+
           est <- Core$estimate_mu_sigma(train_slice)
-          
+
           if (!is.null(mu_method) && mu_method != "none") {
             est$mu <- apply_mu_robustness(
               rets_xts = train_slice, mu = est$mu, method = mu_method,
               winsor_p = mu_winsor, lambda = mu_lambda, freq = 252
             )
           }
-          
+
           if (!is.null(shrink_method) && shrink_method != "none") {
             est$Sigma <- Core$shrink_covariance(est$Sigma, method = shrink_method, lambda = shrink_lambda)
           }
-          
+
           f <- Core$compute_frontier(est$mu, est$Sigma, rf = rf, n_grid = n_grid, w_max = w_max)
-          
+
           if (pick_mode == "tangency") {
             j <- which.max(f$sharpe)
           } else if (pick_mode == "mvp") {
@@ -1756,27 +2284,55 @@ library(modulr)
             j <- 1 + as.integer(round(profile_frac * (m - 1)))
             j <- clamp_idx(j, m)
           }
-          
-          w_new <- as.numeric(f$W[j, ])
-          
-          turnover <- 0.5 * sum(abs(w_new - w_prev))
-          turnover_acc <- turnover_acc + turnover
-          
-          cost <- V * tc_rate * turnover
-          V <- V - cost
-          if (!is.finite(V) || V <= 0) V <- 0
-          
+
+          w_target <- as.numeric(f$W[j, ])
+
+          # V11: Band rebalancing - vérifier si le drift dépasse le seuil
+          do_rebalance <- TRUE
+          if (i > 1 && drift_threshold > 0 && sum(w_actual) > 0) {
+            max_drift <- max(abs(w_target - w_actual))
+            if (max_drift <= drift_threshold) {
+              # Drift insuffisant, on garde les poids actuels (driftés)
+              do_rebalance <- FALSE
+              skipped_count <- skipped_count + 1
+              w_new <- w_actual
+            }
+          }
+
+          if (do_rebalance) {
+            rebal_count <- rebal_count + 1
+
+            # V11: Appliquer le cap de turnover si nécessaire
+            if (turnover_cap < 1 && sum(w_actual) > 0) {
+              w_new <- Core$apply_turnover_cap(w_actual, w_target, turnover_cap)
+            } else {
+              w_new <- w_target
+            }
+
+            # Calculer le turnover réel
+            turnover <- 0.5 * sum(abs(w_new - w_actual))
+            turnover_acc <- turnover_acc + turnover
+
+            # Coût de transaction
+            cost <- V * tc_rate * turnover
+            V <- V - cost
+            if (!is.finite(V) || V <= 0) V <- 0
+          } else {
+            w_new <- w_actual
+          }
+
           seg <- rets[(reb_pos + 1):next_pos, , drop = FALSE]
           if (nrow(seg) == 0) next
-          
+
           rp <- as.numeric(as.matrix(seg) %*% w_new)
           v_path <- V * cumprod(1 + rp)
-          
+
           dates_all  <- c(dates_all, as.Date(zoo::index(seg)))
           values_all <- c(values_all, as.numeric(v_path))
-          
+
           V <- as.numeric(tail(v_path, 1))
           w_prev <- w_new
+          w_actual <- w_new
         }
         
         eq <- xts::xts(values_all, order.by = as.Date(dates_all))
@@ -1801,7 +2357,11 @@ library(modulr)
         sortino <- calc_sortino(r_eq, rf = rf)
         calmar <- calc_calmar(eq, rf = rf)
         win_rate <- calc_win_rate(r_eq)
-        
+
+        # V13: CVaR (Expected Shortfall) - worst 5% of days
+        cvar_daily <- Core$calc_cvar(as.numeric(r_eq), alpha = 0.05)
+        cvar_annual <- cvar_daily * sqrt(252)  # Annualized approximation
+
         # EW metrics
         r_ew <- eq_ew_xts / xts::lag.xts(eq_ew_xts, 1) - 1
         r_ew <- na.omit(r_ew)
@@ -1810,44 +2370,55 @@ library(modulr)
         vol_ew <- if (n_days_ew > 1) stats::sd(as.numeric(r_ew), na.rm = TRUE) * sqrt(252) else NA_real_
         shp_ew <- if (is.finite(vol_ew) && vol_ew > 0) (cagr_ew - rf) / vol_ew else NA_real_
         mdd_ew <- max_drawdown(eq_ew_xts)
-        
+        cvar_ew <- Core$calc_cvar(as.numeric(r_ew), alpha = 0.05) * sqrt(252)
+
         list(
           equity = eq,
           equity_ew = eq_ew_xts,
           metrics = list(
             CAGR = cagr, Vol = vol, Sharpe = shp, MaxDrawdown = mdd,
-            Sortino = sortino, Calmar = calmar, WinRate = win_rate, Turnover = turnover_acc
+            Sortino = sortino, Calmar = calmar, WinRate = win_rate, Turnover = turnover_acc,
+            RebalCount = rebal_count, SkippedCount = skipped_count,
+            CVaR_daily = cvar_daily, CVaR_annual = cvar_annual
           ),
           metrics_ew = list(
-            CAGR = cagr_ew, Vol = vol_ew, Sharpe = shp_ew, MaxDrawdown = mdd_ew
+            CAGR = cagr_ew, Vol = vol_ew, Sharpe = shp_ew, MaxDrawdown = mdd_ew,
+            CVaR_annual = cvar_ew
           )
         )
       }
-      
+
       backtest_res <- reactive({
         req(rv$px_chf, rv$frontier, rv$W, rv$tickers)
-        
+
         cap0 <- input$capital
         train_years <- as.numeric(input$bt_train_years)
         rebal_months <- as.integer(input$bt_rebal_months)
         tc_bps <- as.numeric(input$bt_tc_bps)
-        
+
+        # V11: Band rebalancing params
+        drift_threshold <- as.numeric(input$bt_drift_threshold) / 100  # Convert from % to decimal
+        turnover_cap <- as.numeric(input$bt_turnover_cap) / 100  # Convert from % to decimal
+        if (!is.finite(drift_threshold)) drift_threshold <- 0
+        if (!is.finite(turnover_cap)) turnover_cap <- 1
+
         pick_mode <- input$bt_pick_mode
         prof <- slider_profile_frac()
-        
+
         shrink_method <- input$shrink_method
         shrink_lambda <- if (!is.null(input$shrink_lambda)) input$shrink_lambda else 0.20
-        
+
         mu_method <- input$mu_method
         mu_winsor <- if (!is.null(input$mu_winsor)) input$mu_winsor else 0.02
         mu_lambda <- if (!is.null(input$mu_lambda)) input$mu_lambda else 0.30
-        
+
         run_walk_forward(
           px_chf = rv$px_chf, cap0 = cap0, rf = input$rf, n_grid = input$ngrid, w_max = input$wmax,
           train_years = train_years, rebal_months = rebal_months, tc_bps = tc_bps,
           pick_mode = pick_mode, profile_frac = prof,
           shrink_method = shrink_method, shrink_lambda = shrink_lambda,
-          mu_method = mu_method, mu_winsor = mu_winsor, mu_lambda = mu_lambda
+          mu_method = mu_method, mu_winsor = mu_winsor, mu_lambda = mu_lambda,
+          drift_threshold = drift_threshold, turnover_cap = turnover_cap
         )
       })
       
@@ -1924,37 +2495,56 @@ library(modulr)
         res <- backtest_res()
         m <- res$metrics
         m_ew <- res$metrics_ew
-        
+
+        # V11: Calculer les stats de rebalancement
+        rebal_count <- if (!is.null(m$RebalCount)) m$RebalCount else 0
+        skipped_count <- if (!is.null(m$SkippedCount)) m$SkippedCount else 0
+        total_periods <- rebal_count + skipped_count
+        skip_rate <- if (total_periods > 0) skipped_count / total_periods else 0
+
+        # V13: CVaR values
+        cvar_strat <- if (!is.null(m$CVaR_annual) && is.finite(m$CVaR_annual)) scales::percent(m$CVaR_annual, accuracy = 0.1) else "-"
+        cvar_ew <- if (!is.null(m_ew$CVaR_annual) && is.finite(m_ew$CVaR_annual)) scales::percent(m_ew$CVaR_annual, accuracy = 0.1) else "-"
+
         tibble::tibble(
           Métrique = c(
             "CAGR (rendement annualisé)",
             "Volatilité annualisée",
+            "CVaR 95% (Expected Shortfall)",
             "Ratio de Sharpe",
             "Ratio de Sortino",
             "Ratio de Calmar",
             "Drawdown maximum",
             "Win Rate (jours positifs)",
-            "Turnover cumulé"
+            "Turnover cumulé",
+            "Rebalancements effectués",
+            "Rebalancements évités (drift)"
           ),
           Stratégie = c(
             scales::percent(m$CAGR, accuracy = 0.1),
             scales::percent(m$Vol, accuracy = 0.1),
+            cvar_strat,
             round(m$Sharpe, 2),
             round(m$Sortino, 2),
             round(m$Calmar, 2),
             scales::percent(m$MaxDrawdown, accuracy = 0.1),
             scales::percent(m$WinRate, accuracy = 0.1),
-            paste0(round(m$Turnover * 100, 1), "%")
+            paste0(round(m$Turnover * 100, 1), "%"),
+            paste0(rebal_count, " / ", total_periods),
+            paste0(skipped_count, " (", scales::percent(skip_rate, 0.1), ")")
           ),
           `Equal-Weight` = c(
             scales::percent(m_ew$CAGR, accuracy = 0.1),
             scales::percent(m_ew$Vol, accuracy = 0.1),
+            cvar_ew,
             round(m_ew$Sharpe, 2),
             "-",
             "-",
             scales::percent(m_ew$MaxDrawdown, accuracy = 0.1),
             "-",
-            "0%"
+            "0%",
+            "-",
+            "-"
           )
         )
       }, striped = TRUE, hover = TRUE)
@@ -1970,6 +2560,7 @@ library(modulr)
               tags$li("Sharpe > 1: bon ratio rendement/risque"),
               tags$li("Sortino: comme Sharpe mais ne pénalise que la vol négative"),
               tags$li("Calmar: CAGR / Max Drawdown"),
+              tags$li(tags$strong("CVaR 95%"), ": perte moyenne dans les 5% pires jours (Expected Shortfall)"),
               tags$li("Win Rate > 50%: majorité de jours positifs")
             )
           ),
@@ -2001,7 +2592,280 @@ library(modulr)
           utils::write.csv(df_merged, file, row.names = FALSE)
         }
       )
-      
+
+      # ========================================================================
+      # STRESS TESTING (V13)
+      # ========================================================================
+
+      output$stress_test_table <- renderTable({
+        req(rv$W, rv$tickers, rv$rets_chf, input$pick_idx)
+
+        n <- nrow(rv$W)
+        sel_i <- clamp_idx(input$pick_idx, n)
+        weights <- as.numeric(rv$W[sel_i, ])
+        cap <- input$capital
+
+        # Run all stress tests
+        stress_df <- Core$run_all_stress_tests(weights, rv$rets_chf, cap)
+
+        # Format for display
+        stress_df %>%
+          dplyr::mutate(
+            `Perte Portfolio` = scales::percent(Portfolio_Return, accuracy = 0.1),
+            `Perte CHF` = paste0("-CHF ", scales::comma(abs(Loss_CHF), accuracy = 1)),
+            `Valeur restante` = paste0("CHF ", scales::comma(Remaining_CHF, accuracy = 1)),
+            `S&P 500` = scales::percent(SP500_Return, accuracy = 0.1)
+          ) %>%
+          dplyr::select(Scenario, `Perte Portfolio`, `Perte CHF`, `Valeur restante`, `S&P 500`, Data_Source)
+      }, striped = TRUE, hover = TRUE)
+
+      output$stress_test_note <- renderUI({
+        req(rv$W, input$pick_idx)
+
+        n <- nrow(rv$W)
+        sel_i <- clamp_idx(input$pick_idx, n)
+        weights <- as.numeric(rv$W[sel_i, ])
+        cap <- input$capital
+
+        # Calculate worst case from scenarios
+        stress_df <- Core$run_all_stress_tests(weights, rv$rets_chf, cap)
+        worst_scenario <- stress_df[which.min(stress_df$Portfolio_Return), ]
+
+        tags$div(
+          tags$div(
+            class = "alert alert-warning", style = "padding: 0.75rem;",
+            tags$i(class = "fas fa-exclamation-triangle"),
+            tags$strong(" Pire scénario: "), worst_scenario$Scenario,
+            tags$br(),
+            tags$small(paste0(
+              "Perte potentielle: ", scales::percent(abs(worst_scenario$Portfolio_Return), 0.1),
+              " (CHF ", scales::comma(abs(worst_scenario$Loss_CHF), 1), ")"
+            ))
+          ),
+          tags$p(class = "text-muted small mt-2",
+                 tags$i(class = "fas fa-info-circle"),
+                 " 'Historical' = données réelles de votre portefeuille pendant la crise. ",
+                 "'Estimated' = estimation basée sur le comportement typique des actions."
+          )
+        )
+      })
+
+      # ========================================================================
+      # HOLDINGS TRACKING (V11)
+      # ========================================================================
+
+      # Parser pour les holdings input
+      parse_holdings <- function(text) {
+        if (is.null(text) || nchar(trimws(text)) == 0) return(NULL)
+
+        lines <- strsplit(text, "\n")[[1]]
+        lines <- trimws(lines)
+        lines <- lines[nzchar(lines)]
+
+        if (length(lines) == 0) return(NULL)
+
+        holdings <- lapply(lines, function(line) {
+          parts <- strsplit(line, ":")[[1]]
+          if (length(parts) >= 3) {
+            list(
+              ticker = toupper(trimws(parts[1])),
+              shares = as.numeric(parts[2]),
+              price = as.numeric(parts[3])
+            )
+          } else {
+            NULL
+          }
+        })
+
+        holdings <- holdings[!sapply(holdings, is.null)]
+        if (length(holdings) == 0) return(NULL)
+
+        data.frame(
+          ticker = sapply(holdings, `[[`, "ticker"),
+          shares = sapply(holdings, `[[`, "shares"),
+          price = sapply(holdings, `[[`, "price"),
+          stringsAsFactors = FALSE
+        )
+      }
+
+      # Reactive: parsed holdings
+      holdings_data <- reactive({
+        parse_holdings(input$holdings_input)
+      })
+
+      # Reactive: calcul du rebalancement
+      rebalance_calc <- reactive({
+        req(rv$W, rv$tickers, input$pick_idx)
+
+        holdings <- holdings_data()
+        if (is.null(holdings) || nrow(holdings) == 0) return(NULL)
+
+        # Vérifier que les tickers correspondent
+        model_tickers <- rv$tickers
+        holdings_tickers <- holdings$ticker
+
+        # Mapper les holdings aux tickers du modèle
+        common <- intersect(model_tickers, holdings_tickers)
+        if (length(common) == 0) {
+          return(list(error = "Aucun ticker en commun avec le modèle. Vérifiez vos positions."))
+        }
+
+        # Poids cibles du modèle (portefeuille sélectionné)
+        idx <- clamp_idx(input$pick_idx, nrow(rv$W))
+        w_target_full <- as.numeric(rv$W[idx, ])
+        names(w_target_full) <- model_tickers
+
+        # Calculer valeur actuelle du portfolio
+        holdings$value <- holdings$shares * holdings$price
+        total_value <- sum(holdings$value)
+
+        # Construire w_current aligné avec model_tickers
+        w_current <- rep(0, length(model_tickers))
+        names(w_current) <- model_tickers
+        for (i in seq_len(nrow(holdings))) {
+          tk <- holdings$ticker[i]
+          if (tk %in% model_tickers) {
+            w_current[tk] <- holdings$value[i] / total_value
+          }
+        }
+
+        # Calculer le drift
+        drift_info <- Core$calc_drift(w_current, w_target_full)
+
+        # Calculer les trades
+        tc_bps <- as.numeric(input$holdings_tc_bps)
+        if (!is.finite(tc_bps)) tc_bps <- 10
+
+        # Construire dataframe holdings pour calc_rebalancing_trades
+        holdings_aligned <- data.frame(
+          ticker = model_tickers,
+          shares = sapply(model_tickers, function(tk) {
+            if (tk %in% holdings$ticker) holdings$shares[holdings$ticker == tk] else 0
+          }),
+          price = sapply(model_tickers, function(tk) {
+            if (tk %in% names(rv$px_last)) rv$px_last[tk] else 0
+          }),
+          stringsAsFactors = FALSE
+        )
+
+        trades <- Core$calc_rebalancing_trades(
+          holdings = holdings_aligned,
+          w_target = w_target_full,
+          portfolio_value = total_value,
+          tc_bps = tc_bps
+        )
+
+        list(
+          trades = trades,
+          drift = drift_info,
+          total_value = total_value,
+          total_cost = sum(abs(trades$trade_cost))
+        )
+      })
+
+      # Outputs pour Holdings
+      output$holdings_value <- renderUI({
+        calc <- rebalance_calc()
+        if (is.null(calc) || !is.null(calc$error)) {
+          tags$div(class = "kpi-value text-muted", "-")
+        } else {
+          tags$div(class = "kpi-value", style = "color: #18BC9C;",
+                   paste0("CHF ", scales::comma(calc$total_value, accuracy = 1)))
+        }
+      })
+
+      output$holdings_max_drift <- renderUI({
+        calc <- rebalance_calc()
+        if (is.null(calc) || !is.null(calc$error)) {
+          tags$div(class = "kpi-value text-muted", "-")
+        } else {
+          drift_pct <- calc$drift$max_drift * 100
+          color <- if (drift_pct > 10) "#E74C3C" else if (drift_pct > 5) "#F39C12" else "#27AE60"
+          tags$div(class = "kpi-value", style = paste0("color: ", color, ";"),
+                   paste0(round(drift_pct, 1), "%"))
+        }
+      })
+
+      output$holdings_rebal_cost <- renderUI({
+        calc <- rebalance_calc()
+        if (is.null(calc) || !is.null(calc$error)) {
+          tags$div(class = "kpi-value text-muted", "-")
+        } else {
+          tags$div(class = "kpi-value", style = "color: #3498DB;",
+                   paste0("CHF ", scales::comma(calc$total_cost, accuracy = 0.01)))
+        }
+      })
+
+      output$holdings_trades_table <- renderTable({
+        calc <- rebalance_calc()
+        if (is.null(calc)) {
+          return(tibble::tibble(Message = "Entrez vos positions pour voir les trades suggérés."))
+        }
+        if (!is.null(calc$error)) {
+          return(tibble::tibble(Erreur = calc$error))
+        }
+
+        trades <- calc$trades
+        trades$Action <- ifelse(trades$trade_value > 0, "ACHETER",
+                                ifelse(trades$trade_value < 0, "VENDRE", "-"))
+
+        trades[, c("ticker", "current_weight", "target_weight", "drift",
+                   "Action", "trade_shares", "trade_value", "trade_cost")]
+      }, striped = TRUE, hover = TRUE, digits = 2)
+
+      output$holdings_comparison_plot <- renderPlot({
+        calc <- rebalance_calc()
+        if (is.null(calc) || !is.null(calc$error)) {
+          return(ggplot() +
+                   theme_void() +
+                   annotate("text", x = 0.5, y = 0.5, label = "Entrez vos positions\npour voir la comparaison",
+                            size = 5, color = colors$muted))
+        }
+
+        trades <- calc$trades
+
+        df_plot <- rbind(
+          data.frame(ticker = trades$ticker, weight = trades$current_weight, type = "Actuel"),
+          data.frame(ticker = trades$ticker, weight = trades$target_weight, type = "Cible")
+        )
+
+        ggplot(df_plot, aes(x = ticker, y = weight, fill = type)) +
+          geom_bar(stat = "identity", position = "dodge", width = 0.7) +
+          scale_fill_manual(values = c("Actuel" = colors$purple, "Cible" = colors$secondary)) +
+          theme_markowitz() +
+          theme(legend.position = "bottom", legend.title = element_blank()) +
+          labs(x = NULL, y = "Poids (%)",
+               title = "Comparaison des allocations",
+               subtitle = "Portefeuille actuel vs allocation cible") +
+          coord_flip()
+      })
+
+      output$holdings_note <- renderUI({
+        calc <- rebalance_calc()
+        if (is.null(calc) || !is.null(calc$error)) return(NULL)
+
+        drift_threshold <- 5  # Recommandation par défaut
+        if (calc$drift$max_drift * 100 < drift_threshold) {
+          tags$div(class = "alert alert-success",
+                   tags$i(class = "fas fa-check-circle"),
+                   paste0(" Drift < ", drift_threshold, "%. Rebalancement optionnel."))
+        } else {
+          tags$div(class = "alert alert-warning",
+                   tags$i(class = "fas fa-exclamation-triangle"),
+                   paste0(" Drift > ", drift_threshold, "%. Rebalancement recommandé."))
+        }
+      })
+
+      output$dl_rebalance <- downloadHandler(
+        filename = function() paste0("rebalancing_trades_", Sys.Date(), ".csv"),
+        content = function(file) {
+          calc <- rebalance_calc()
+          if (!is.null(calc) && is.null(calc$error)) {
+            utils::write.csv(calc$trades, file, row.names = FALSE)
+          }
+        }
+      )
+
       # ========================================================================
       # DOCUMENTATION
       # ========================================================================

@@ -1,0 +1,56 @@
+# Markowitz Portfolio Optimizer - Docker Compose
+# Usage: docker-compose up -d
+
+version: '3.8'
+
+services:
+  markowitz-app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: markowitz-shiny
+    restart: unless-stopped
+
+    ports:
+      - "3838:3838"
+
+    volumes:
+      # Persistent data volume for user settings and logs
+      - markowitz-data:/srv/shiny-server/markowitz-app/data
+      # Mount local docs for hot-reload during development (optional)
+      # - ./docs:/srv/shiny-server/markowitz-app/docs:ro
+
+    environment:
+      # Application settings
+      - SHINY_LOG_LEVEL=INFO
+      # Optional: Yahoo Finance API rate limiting (requests per second)
+      - YAHOO_RATE_LIMIT=2
+
+    # Resource limits for AWS
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 4G
+        reservations:
+          cpus: '1'
+          memory: 2G
+
+    # Health check
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3838/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+    # Logging
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  markowitz-data:
+    driver: local

@@ -1,0 +1,30 @@
+# Docker ignore file
+.git
+.gitignore
+.Rhistory
+.RData
+*.Rproj.user
+*.Rproj
+
+# Development files
+*.md
+!docs/documentation.md
+README.md
+LICENSE
+
+# Local data
+data/
+*.json
+*.sqlite
+
+# IDE
+.vscode/
+.idea/
+
+# Logs
+*.log
+logs/
+
+# Build artifacts
+*.tar.gz
+*.zip
