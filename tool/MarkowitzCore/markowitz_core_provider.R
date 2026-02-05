@@ -11,6 +11,7 @@ library(modulr)
   library(Matrix)
   library(xts)
   library(jsonlite)
+  library(rlang)
 
   # ============================================================================
   # LOGGING (V11)
