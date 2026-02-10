@@ -24,9 +24,10 @@ cleanup_shiny_tmp()
 # Sys.setenv(TMPDIR = normalizePath("tmp", winslash = "/", mustWork = TRUE))
 
 # ---------------------------------------------------------------------------
-# Build + run
+# Build + run (avec login shinymanager)
 # ---------------------------------------------------------------------------
-AppBuilder_ <- modulr::make("tool/MarkowitzShiny/markowitz_shiny_app_provider")
-app <- AppBuilder_()
-
-shiny::runApp(app, host = "0.0.0.0", port = 3838)
+shiny::runApp(
+  appDir = ".",       # utilise app.R à la racine
+  host   = "0.0.0.0",
+  port   = 3838
+)
