@@ -321,12 +321,53 @@ login_overlay_html <- tags$div(
 )
 
 # ---------------------------------------------------------------------------
+# Admin floating button (hidden by default, shown only for admin users)
+# ---------------------------------------------------------------------------
+admin_fab_html <- tags$div(
+
+  # Floating action button
+  tags$div(
+    id = "admin-fab",
+    style = "display:none; position:fixed; bottom:30px; right:30px; z-index:9998;",
+    tags$button(
+      id = "admin-fab-btn",
+      onclick = "Shiny.setInputValue('show_admin_modal', Math.random())",
+      style = "width:56px; height:56px; border-radius:50%; border:none;
+               background:linear-gradient(135deg, #E74C3C 0%, #C0392B 100%);
+               color:white; font-size:22px; cursor:pointer;
+               box-shadow: 0 4px 20px rgba(231,76,60,0.4), 0 2px 8px rgba(0,0,0,0.2);
+               transition: all 0.3s ease; display:flex; align-items:center; justify-content:center;",
+      tags$i(class = "fas fa-shield-alt")
+    )
+  ),
+
+  # CSS hover pour le FAB
+  tags$style(HTML("
+    #admin-fab-btn:hover {
+      transform: scale(1.1);
+      box-shadow: 0 6px 30px rgba(231,76,60,0.5), 0 4px 12px rgba(0,0,0,0.3);
+    }
+    #admin-fab-btn:active { transform: scale(0.95); }
+  ")),
+
+  # JS handler pour afficher le FAB
+  tags$script(HTML("
+    Shiny.addCustomMessageHandler('show_admin_fab', function(msg) {
+      var fab = document.getElementById('admin-fab');
+      if (fab) fab.style.display = 'block';
+    });
+  "))
+)
+
+# ---------------------------------------------------------------------------
 # Wrap UI + Server
 # ---------------------------------------------------------------------------
-# Injecter l'overlay DANS le UI bslib (pas tagList, sinon bslib casse)
-ui <- htmltools::tagAppendChildren(app_ui, login_overlay_html)
+# Injecter l'overlay + admin FAB DANS le UI bslib
+ui <- htmltools::tagAppendChildren(app_ui, login_overlay_html, admin_fab_html)
 
 server <- function(input, output, session) {
+
+  is_admin <- reactiveVal(FALSE)
 
   # Auth handler
   observeEvent(input$auth_attempt, {
@@ -335,12 +376,202 @@ server <- function(input, output, session) {
 
     if (!is.null(user_info) && identical(user_info$password, attempt$pass)) {
       session$sendCustomMessage("auth_result", list(success = TRUE))
+
+      # Show admin FAB if admin
+      if (isTRUE(user_info$admin)) {
+        is_admin(TRUE)
+        session$sendCustomMessage("show_admin_fab", TRUE)
+      }
     } else {
       session$sendCustomMessage("auth_result", list(
         success = FALSE,
         message = "Identifiants incorrects"
       ))
     }
+  })
+
+  # Admin modal
+  observeEvent(input$show_admin_modal, {
+    req(is_admin())
+
+    showModal(modalDialog(
+      title = tags$div(
+        style = "display:flex; align-items:center; gap:10px;",
+        tags$i(class = "fas fa-shield-alt", style = "color:#E74C3C; font-size:1.3rem;"),
+        tags$span("Admin — Commandes Ops", style = "font-weight:700; font-size:1.1rem;")
+      ),
+      size = "l",
+      easyClose = TRUE,
+      footer = modalButton("Fermer"),
+
+      tags$div(
+        style = "font-family: 'Inter', -apple-system, sans-serif;",
+
+        # ── Section: Connexion SSH ──
+        tags$div(
+          class = "mb-4",
+          tags$h5(
+            tags$i(class = "fas fa-terminal", style = "color:#18BC9C;"),
+            " Connexion SSH",
+            style = "font-weight:700; border-bottom:2px solid #E9ECEF; padding-bottom:8px;"
+          ),
+          tags$pre(
+            style = "background:#1e1e2e; color:#cdd6f4; padding:16px; border-radius:10px; font-size:0.85rem; overflow-x:auto;",
+            HTML(paste0(
+              '<span style="color:#89b4fa;"># Connexion au serveur EC2</span>\n',
+              'ssh shinyMark\n\n',
+              '<span style="color:#89b4fa;"># Ou avec le chemin complet</span>\n',
+              'ssh -i ~/.ssh/markowitz-key.pem ubuntu@63.178.202.49'
+            ))
+          )
+        ),
+
+        # ── Section: Gestion de l'app ──
+        tags$div(
+          class = "mb-4",
+          tags$h5(
+            tags$i(class = "fas fa-play-circle", style = "color:#27AE60;"),
+            " Gestion de l'app Shiny",
+            style = "font-weight:700; border-bottom:2px solid #E9ECEF; padding-bottom:8px;"
+          ),
+          tags$pre(
+            style = "background:#1e1e2e; color:#cdd6f4; padding:16px; border-radius:10px; font-size:0.85rem; overflow-x:auto;",
+            HTML(paste0(
+              '<span style="color:#89b4fa;"># Statut du serveur Shiny</span>\n',
+              'sudo systemctl status shiny-server\n\n',
+              '<span style="color:#89b4fa;"># Redemarrer Shiny Server</span>\n',
+              'sudo systemctl restart shiny-server\n\n',
+              '<span style="color:#89b4fa;"># Arreter / Demarrer</span>\n',
+              'sudo systemctl stop shiny-server\n',
+              'sudo systemctl start shiny-server\n\n',
+              '<span style="color:#89b4fa;"># Voir les logs Shiny Server</span>\n',
+              'sudo tail -f /var/log/shiny-server/*.log\n\n',
+              '<span style="color:#89b4fa;"># Logs de l\'app Markowitz</span>\n',
+              'sudo tail -f /var/log/shiny-server/markowitz-shiny-*.log'
+            ))
+          )
+        ),
+
+        # ── Section: Mise à jour du code ──
+        tags$div(
+          class = "mb-4",
+          tags$h5(
+            tags$i(class = "fas fa-code-branch", style = "color:#9B59B6;"),
+            " Mise a jour du code (git pull)",
+            style = "font-weight:700; border-bottom:2px solid #E9ECEF; padding-bottom:8px;"
+          ),
+          tags$pre(
+            style = "background:#1e1e2e; color:#cdd6f4; padding:16px; border-radius:10px; font-size:0.85rem; overflow-x:auto;",
+            HTML(paste0(
+              '<span style="color:#89b4fa;"># Aller dans le repertoire de l\'app</span>\n',
+              'cd /srv/shiny-server/markowitz-shiny\n\n',
+              '<span style="color:#89b4fa;"># Recuperer les dernieres modifications</span>\n',
+              'sudo git pull origin main\n\n',
+              '<span style="color:#89b4fa;"># Redemarrer pour appliquer</span>\n',
+              'sudo systemctl restart shiny-server\n\n',
+              '<span style="color:#89b4fa;"># En une seule commande</span>\n',
+              'cd /srv/shiny-server/markowitz-shiny && sudo git pull origin main && sudo systemctl restart shiny-server'
+            ))
+          )
+        ),
+
+        # ── Section: Monitoring ──
+        tags$div(
+          class = "mb-4",
+          tags$h5(
+            tags$i(class = "fas fa-heartbeat", style = "color:#E74C3C;"),
+            " Monitoring serveur",
+            style = "font-weight:700; border-bottom:2px solid #E9ECEF; padding-bottom:8px;"
+          ),
+          tags$pre(
+            style = "background:#1e1e2e; color:#cdd6f4; padding:16px; border-radius:10px; font-size:0.85rem; overflow-x:auto;",
+            HTML(paste0(
+              '<span style="color:#89b4fa;"># Espace disque</span>\n',
+              'df -h\n\n',
+              '<span style="color:#89b4fa;"># Memoire RAM</span>\n',
+              'free -h\n\n',
+              '<span style="color:#89b4fa;"># CPU et processus</span>\n',
+              'htop    <span style="color:#a6adc8;"># ou: top</span>\n\n',
+              '<span style="color:#89b4fa;"># Processus R en cours</span>\n',
+              'ps aux | grep -i "[R]" | grep -v grep\n\n',
+              '<span style="color:#89b4fa;"># Uptime serveur</span>\n',
+              'uptime\n\n',
+              '<span style="color:#89b4fa;"># Verifier que le port 3838 est ouvert</span>\n',
+              'sudo ss -tlnp | grep 3838'
+            ))
+          )
+        ),
+
+        # ── Section: Debug ──
+        tags$div(
+          class = "mb-4",
+          tags$h5(
+            tags$i(class = "fas fa-bug", style = "color:#F39C12;"),
+            " Debug & Troubleshooting",
+            style = "font-weight:700; border-bottom:2px solid #E9ECEF; padding-bottom:8px;"
+          ),
+          tags$pre(
+            style = "background:#1e1e2e; color:#cdd6f4; padding:16px; border-radius:10px; font-size:0.85rem; overflow-x:auto;",
+            HTML(paste0(
+              '<span style="color:#89b4fa;"># Tester l\'app en local sur le serveur (port 3939)</span>\n',
+              'cd /srv/shiny-server/markowitz-shiny\n',
+              'sudo R -e \'shiny::runApp(".", host="0.0.0.0", port=3939)\'\n\n',
+              '<span style="color:#89b4fa;"># Verifier les packages R installes</span>\n',
+              'R -e \'installed.packages()[,"Package"]\'\n\n',
+              '<span style="color:#89b4fa;"># Installer un package manquant</span>\n',
+              'sudo R -e \'install.packages("nom_du_package")\'\n\n',
+              '<span style="color:#89b4fa;"># Installer modulr depuis GitHub</span>\n',
+              'sudo R -e \'remotes::install_github("openanalytics/modulr")\'\n\n',
+              '<span style="color:#89b4fa;"># Purger le cache Shiny (si problemes)</span>\n',
+              'sudo rm -rf /tmp/bslib-* /tmp/selectize*\n',
+              'sudo systemctl restart shiny-server'
+            ))
+          )
+        ),
+
+        # ── Section: URLs ──
+        tags$div(
+          class = "mb-4",
+          tags$h5(
+            tags$i(class = "fas fa-globe", style = "color:#3498DB;"),
+            " URLs utiles",
+            style = "font-weight:700; border-bottom:2px solid #E9ECEF; padding-bottom:8px;"
+          ),
+          tags$div(
+            style = "background:#f8f9fa; padding:16px; border-radius:10px; font-size:0.9rem;",
+            tags$table(
+              style = "width:100%; border-collapse:collapse;",
+              tags$tr(
+                tags$td(style = "padding:6px 12px; font-weight:600; color:#2C3E50;", "App Markowitz"),
+                tags$td(style = "padding:6px 12px;", tags$code("http://63.178.202.49:3838/markowitz-shiny/"))
+              ),
+              tags$tr(style = "background:white;",
+                tags$td(style = "padding:6px 12px; font-weight:600; color:#2C3E50;", "Shiny Server"),
+                tags$td(style = "padding:6px 12px;", tags$code("http://63.178.202.49:3838/"))
+              ),
+              tags$tr(
+                tags$td(style = "padding:6px 12px; font-weight:600; color:#2C3E50;", "Repo GitHub"),
+                tags$td(style = "padding:6px 12px;", tags$code("github.com/skofel1/markowitz-shiny"))
+              ),
+              tags$tr(style = "background:white;",
+                tags$td(style = "padding:6px 12px; font-weight:600; color:#2C3E50;", "IP EC2"),
+                tags$td(style = "padding:6px 12px;", tags$code("63.178.202.49"))
+              )
+            )
+          )
+        ),
+
+        # ── Footer note ──
+        tags$div(
+          class = "alert alert-warning mt-3",
+          style = "margin-bottom:0; padding:12px 16px; border-radius:10px;",
+          tags$i(class = "fas fa-lock"),
+          tags$strong(" Cette page est visible uniquement par les administrateurs."),
+          tags$br(),
+          tags$small(class = "text-muted", "Credentials: app.R lignes 16-19 | SSH key: ~/.ssh/markowitz-key.pem")
+        )
+      )
+    ))
   })
 
   # Run original app server
