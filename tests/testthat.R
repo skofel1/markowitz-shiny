@@ -1,6 +1,12 @@
 # Test runner for Markowitz Portfolio Optimizer
 # Run with: Rscript tests/testthat.R
 
+# Ensure user library is on the search path
+user_lib <- Sys.getenv("R_LIBS_USER")
+if (nzchar(user_lib) && dir.exists(path.expand(user_lib))) {
+  .libPaths(c(path.expand(user_lib), .libPaths()))
+}
+
 library(testthat)
 library(modulr)
 

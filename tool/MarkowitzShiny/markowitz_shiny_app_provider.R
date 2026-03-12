@@ -14,6 +14,7 @@ library(modulr)
   library(scales)
   library(tibble)
   library(xts)
+  library(shinycssloaders)
   
   # ============================================================================
   # PROVIDER
@@ -587,7 +588,7 @@ library(modulr)
               ),
               card_body(
                 uiOutput("pick_ui"),
-                plotOutput("frontier_plot", height = 480)
+                withSpinner(plotOutput("frontier_plot", height = 480), type = 6, color = "#18BC9C")
               )
             ),
             
@@ -758,7 +759,7 @@ library(modulr)
             
             card(
               card_header(tags$span(tags$i(class = "fas fa-chart-area"), " Projection de valeur")),
-              card_body(plotOutput("proj_plot", height = 480))
+              card_body(withSpinner(plotOutput("proj_plot", height = 480), type = 6, color = "#18BC9C"))
             ),
             
             card(
@@ -878,7 +879,7 @@ library(modulr)
               
               card(
                 card_header(tags$span(tags$i(class = "fas fa-chart-line"), " Performance vs Benchmarks")),
-                card_body(plotOutput("bt_plot", height = 350))
+                card_body(withSpinner(plotOutput("bt_plot", height = 350), type = 6, color = "#18BC9C"))
               ),
               
               card(
@@ -894,7 +895,7 @@ library(modulr)
             # NOUVEAU V10: Graphique Drawdown
             card(
               card_header(tags$span(tags$i(class = "fas fa-chart-area"), " Drawdowns historiques")),
-              card_body(plotOutput("bt_drawdown_plot", height = 250))
+              card_body(withSpinner(plotOutput("bt_drawdown_plot", height = 250), type = 6, color = "#18BC9C"))
             ),
 
             # V13: Stress Testing
@@ -903,7 +904,7 @@ library(modulr)
               card_body(
                 tags$p(class = "text-muted small",
                        "Impact estimé du portefeuille sélectionné sous différents scénarios de crise historiques."),
-                tableOutput("stress_test_table"),
+                withSpinner(tableOutput("stress_test_table"), type = 6, color = "#18BC9C"),
                 tags$hr(),
                 uiOutput("stress_test_note")
               )
@@ -1152,14 +1153,15 @@ library(modulr)
         r <- as.numeric(returns)
         r <- r[is.finite(r)]
         if (length(r) < 10) return(NA_real_)
-        
-        excess <- r - rf/freq
-        downside <- r[r < 0]
+
+        rf_daily <- rf / freq
+        excess <- r - rf_daily
+        downside <- excess[excess < 0]
         if (length(downside) < 2) return(NA_real_)
-        
-        downside_vol <- sd(downside) * sqrt(freq)
+
+        downside_vol <- sqrt(mean(downside^2)) * sqrt(freq)
         if (downside_vol == 0) return(NA_real_)
-        
+
         mean(excess) * freq / downside_vol
       }
       
@@ -2360,7 +2362,7 @@ library(modulr)
 
         # V13: CVaR (Expected Shortfall) - worst 5% of days
         cvar_daily <- Core$calc_cvar(as.numeric(r_eq), alpha = 0.05)
-        cvar_annual <- cvar_daily * sqrt(252)  # Annualized approximation
+        cvar_annual <- cvar_daily * 252  # CVaR scales linearly (mean of tail losses)
 
         # EW metrics
         r_ew <- eq_ew_xts / xts::lag.xts(eq_ew_xts, 1) - 1
@@ -2370,7 +2372,7 @@ library(modulr)
         vol_ew <- if (n_days_ew > 1) stats::sd(as.numeric(r_ew), na.rm = TRUE) * sqrt(252) else NA_real_
         shp_ew <- if (is.finite(vol_ew) && vol_ew > 0) (cagr_ew - rf) / vol_ew else NA_real_
         mdd_ew <- max_drawdown(eq_ew_xts)
-        cvar_ew <- Core$calc_cvar(as.numeric(r_ew), alpha = 0.05) * sqrt(252)
+        cvar_ew <- Core$calc_cvar(as.numeric(r_ew), alpha = 0.05) * 252
 
         list(
           equity = eq,

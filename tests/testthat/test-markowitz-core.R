@@ -4,8 +4,12 @@
 library(testthat)
 library(modulr)
 
-# Source the module
-source(file.path(getwd(), "tool/MarkowitzCore/markowitz_core_provider.R"))
+# Source the module (handle both project root and tests/testthat as cwd)
+core_path <- "tool/MarkowitzCore/markowitz_core_provider.R"
+if (!file.exists(core_path)) {
+  core_path <- file.path("../..", core_path)
+}
+source(core_path)
 Core <- make("tool/MarkowitzCore/markowitz_core_provider")()
 
 # =============================================================================
@@ -257,4 +261,68 @@ test_that("drift_weights computes drifted weights correctly", {
   expect_equal(sum(result), 1, tolerance = 0.001)
   expect_true(result[1] > 0.50)  # First asset grew more
   expect_true(result[2] < 0.50)  # Second asset is now smaller share
+})
+
+# =============================================================================
+# TEST: calc_var (Value at Risk)
+# =============================================================================
+test_that("calc_var returns correct quantile", {
+  set.seed(123)
+  returns <- rnorm(1000, mean = 0, sd = 0.02)
+
+  var_5 <- Core$calc_var(returns, alpha = 0.05)
+
+  # VaR at 5% should be approximately -1.645 * 0.02 = -0.0329
+  expect_true(var_5 < 0)
+  expect_equal(var_5, quantile(returns, 0.05, names = FALSE), tolerance = 1e-10)
+})
+
+test_that("calc_var returns NA for too few observations", {
+  expect_true(is.na(Core$calc_var(c(0.01, -0.02), alpha = 0.05)))
+})
+
+# =============================================================================
+# TEST: calc_cvar (Conditional VaR / Expected Shortfall)
+# =============================================================================
+test_that("calc_cvar is more extreme than VaR", {
+  set.seed(42)
+  returns <- rnorm(1000, mean = 0, sd = 0.02)
+
+  var_5 <- Core$calc_var(returns, alpha = 0.05)
+  cvar_5 <- Core$calc_cvar(returns, alpha = 0.05)
+
+  # CVaR should be more negative than VaR (it's the mean of tail losses)
+  expect_true(cvar_5 < var_5)
+})
+
+test_that("calc_cvar equals mean of returns below VaR threshold", {
+  set.seed(42)
+  returns <- rnorm(1000, mean = 0, sd = 0.02)
+
+  cvar_5 <- Core$calc_cvar(returns, alpha = 0.05)
+  var_threshold <- quantile(returns, 0.05)
+  expected_cvar <- mean(returns[returns <= var_threshold])
+
+  expect_equal(cvar_5, expected_cvar, tolerance = 1e-10)
+})
+
+test_that("calc_cvar returns NA for too few observations", {
+  expect_true(is.na(Core$calc_cvar(c(0.01), alpha = 0.05)))
+})
+
+# =============================================================================
+# TEST: calc_cvar_annual (annualized CVaR)
+# =============================================================================
+test_that("calc_cvar_annual uses linear scaling (not sqrt)", {
+  set.seed(42)
+  returns <- rnorm(1000, mean = 0, sd = 0.02)
+
+  daily_cvar <- Core$calc_cvar(returns, alpha = 0.05)
+  annual_cvar <- Core$calc_cvar_annual(returns, alpha = 0.05, freq = 252)
+
+  # Linear scaling: annual = daily * 252 (NOT daily * sqrt(252))
+  expect_equal(annual_cvar, daily_cvar * 252, tolerance = 1e-10)
+
+  # Verify it's NOT sqrt scaling
+  expect_true(abs(annual_cvar - daily_cvar * sqrt(252)) > 0.01)
 })

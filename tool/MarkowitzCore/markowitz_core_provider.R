@@ -824,8 +824,8 @@ library(modulr)
     calc_cvar_annual <- function(returns, alpha = 0.05, freq = 252) {
       daily_cvar <- calc_cvar(returns, alpha)
       if (is.na(daily_cvar)) return(NA_real_)
-      # Annualize using sqrt(T) scaling (approximation)
-      daily_cvar * sqrt(freq)
+      # CVaR scales linearly (not sqrt) because it's a mean of tail losses
+      daily_cvar * freq
     }
 
     #' Calculate portfolio CVaR given weights
