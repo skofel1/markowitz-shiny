@@ -297,7 +297,7 @@ library(modulr)
             textAreaInput(
               "tickers", 
               label = NULL,
-              value = "AAPL MSFT AMZN GOOGL NVDA",
+              value = "V AAPL MSFT KO ABBN NESTLE NOVARTIS JNJ MCD XOM",
               rows = 3,
               placeholder = "Ex: AAPL, MSFT, NOVN, UBS..."
             ),
@@ -1357,15 +1357,14 @@ library(modulr)
         withProgress(message = "Optimisation en cours...", value = 0, {
           
           tryCatch({
-            
+
             incProgress(0.05, detail = "Parsing des tickers")
             tks <- Core$normalize_tickers(input$tickers, use_aliases = input$use_aliases)
             
-            validate(need(length(tks) >= 2, "Entrez au moins 2 tickers."))
-            validate(need(
-              input$wmax >= 1 / length(tks),
-              paste0("wmax trop bas. Avec ", length(tks), " titres, il faut wmax ≥ ", round(1 / length(tks), 3))
-            ))
+            if (length(tks) < 2) stop("Entrez au moins 2 tickers.")
+            if (input$wmax < 1 / length(tks)) {
+              stop(paste0("wmax trop bas. Avec ", length(tks), " titres, il faut wmax >= ", round(1 / length(tks), 3)))
+            }
             
             showNotification(paste0("Tickers analysés: ", paste(tks, collapse = ", ")), type = "message", duration = 4)
             

@@ -265,14 +265,18 @@ library(modulr)
 
       for (tk in tickers) {
         tryCatch({
-          # Utiliser quantmod::getQuote avec le champ approprié
-          # Note: Yahoo ne fournit pas toujours le secteur via getQuote standard
-          # On va utiliser une approche alternative avec l'URL directe
           url <- paste0("https://query1.finance.yahoo.com/v10/finance/quoteSummary/",
                         tk, "?modules=assetProfile")
 
+          # Lire l'URL comme texte brut d'abord (evite le crash jsonlite sur 401/403)
+          raw <- tryCatch({
+            readLines(url, warn = FALSE)
+          }, warning = function(w) NULL, error = function(e) NULL)
+
+          if (is.null(raw) || length(raw) == 0) next
+
           resp <- tryCatch({
-            jsonlite::fromJSON(url)
+            jsonlite::fromJSON(paste(raw, collapse = ""))
           }, error = function(e) NULL)
 
           if (!is.null(resp) && !is.null(resp$quoteSummary$result[[1]]$assetProfile$sector)) {
@@ -301,6 +305,7 @@ library(modulr)
         "AMZN" = "Consumer Cyclical", "TSLA" = "Consumer Cyclical",
         "HD" = "Consumer Cyclical", "NKE" = "Consumer Cyclical",
         "MCD" = "Consumer Cyclical", "SBUX" = "Consumer Cyclical",
+        "KO" = "Consumer Defensive", "PG" = "Consumer Defensive", "PEP" = "Consumer Defensive",
 
         # Healthcare
         "JNJ" = "Healthcare", "UNH" = "Healthcare", "PFE" = "Healthcare",
@@ -329,16 +334,18 @@ library(modulr)
       return("Unknown")
     }
 
-    # Fonction combinée: essaie Yahoo, puis fallback
+    # Fonction combinée: fallback local (Yahoo API v10 requiert auth depuis 2025)
     get_ticker_sectors <- function(tickers) {
-      # D'abord essayer Yahoo
-      sectors <- get_ticker_sectors_yahoo(tickers)
+      sectors <- stats::setNames(rep("Unknown", length(tickers)), tickers)
 
-      # Pour les Unknown, utiliser le fallback
       for (tk in names(sectors)) {
-        if (sectors[tk] == "Unknown") {
-          sectors[tk] <- get_sector_fallback(tk)
-        }
+        sectors[tk] <- get_sector_fallback(tk)
+      }
+
+      # Log les tickers sans mapping
+      unknown <- names(sectors[sectors == "Unknown"])
+      if (length(unknown) > 0) {
+        Logger$log_warn("No sector mapping for tickers", tickers = paste(unknown, collapse = ","))
       }
 
       sectors
@@ -1046,13 +1053,13 @@ library(modulr)
     #' Get default settings
     get_default_settings <- function() {
       list(
-        tickers = "AAPL MSFT AMZN GOOGL NVDA",
+        tickers = "V AAPL MSFT KO ABBN NESTLE NOVARTIS JNJ MCD XOM",
         use_aliases = TRUE,
         date_start = as.character(Sys.Date() - 365 * 5),
         date_end = as.character(Sys.Date()),
         capital = 10000,
-        rf = 0.02,
-        wmax = 0.40,
+        rf = 0.015,
+        wmax = 0.20,
         ngrid = 60,
         shrink_method = "constcor",
         shrink_lambda = 0.20,

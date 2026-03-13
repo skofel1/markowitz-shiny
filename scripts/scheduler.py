@@ -12,6 +12,7 @@ Planning:
     - Alerte drawdown  : lun-ven a 18h15
     - Recap hebdo      : lundi a 18h30
     - Rappel rebalance : 1er jan/avr/jul/oct a 9h00
+    - Claude Code news : jeudi a 9h00
 """
 
 import subprocess
@@ -19,10 +20,12 @@ import time
 import os
 import sys
 from datetime import datetime, timedelta
+from pathlib import Path
 
 PROJECT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 RSCRIPT = "Rscript"
 LOG_FILE = os.path.join(PROJECT_DIR, "logs", "monitor.log")
+CLAUDE_NEWS_SCRIPT = str(Path.home() / ".claude" / "skills" / "claude-news" / "scripts" / "claude_news.py")
 
 # S'assurer que le dossier logs existe
 os.makedirs(os.path.join(PROJECT_DIR, "logs"), exist_ok=True)
@@ -59,6 +62,26 @@ def run_monitor(mode):
         log(f"  [ERROR] {e}")
 
 
+def run_claude_news():
+    """Execute le script claude_news.py --send."""
+    cmd = [sys.executable, CLAUDE_NEWS_SCRIPT, "--send"]
+    log(f"Lancement: {' '.join(cmd)}")
+    try:
+        result = subprocess.run(
+            cmd, capture_output=True, text=True, timeout=120,
+        )
+        if result.stdout:
+            for line in result.stdout.strip().split("\n"):
+                log(f"  {line}")
+        if result.returncode != 0 and result.stderr:
+            for line in result.stderr.strip().split("\n")[-5:]:
+                log(f"  [ERR] {line}")
+    except subprocess.TimeoutExpired:
+        log("  [TIMEOUT] claude-news a depasse 2 minutes")
+    except Exception as e:
+        log(f"  [ERROR] claude-news: {e}")
+
+
 def main():
     log("=== Markowitz Scheduler demarre ===")
     log(f"  Projet    : {PROJECT_DIR}")
@@ -67,6 +90,7 @@ def main():
     log(f"    - Alerte drawdown  : lun-ven 18h15")
     log(f"    - Recap hebdo      : lundi 18h30")
     log(f"    - Rappel rebalance : 1er jan/avr/jul/oct 9h00")
+    log(f"    - Claude Code news : jeudi 9h00")
     log("")
 
     # Tracking: eviter de relancer la meme tache dans la meme minute
@@ -103,6 +127,13 @@ def main():
             if key not in last_run:
                 last_run[key] = True
                 run_monitor("rebalance")
+
+        # Claude Code news: jeudi a 9h00
+        if weekday == 3 and hour == 9 and minute == 0:
+            key = f"claude-news-{time_key}"
+            if key not in last_run:
+                last_run[key] = True
+                run_claude_news()
 
         # Nettoyer les vieilles cles (garder 24h)
         if len(last_run) > 1000:
