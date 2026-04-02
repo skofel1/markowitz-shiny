@@ -455,7 +455,7 @@ library(modulr)
     # --------------------------------------------------------------------------
     # solve_min_var_target : Markowitz (QP) avec contraintes
     # --------------------------------------------------------------------------
-    solve_min_var_target <- function(mu, Sigma, target_return, w_max = 1) {
+    solve_min_var_target <- function(mu, Sigma, target_return, w_max = 1, w_min = 0) {
       n <- length(mu)
       Dmat <- Sigma
       dvec <- rep(0, n)
@@ -463,10 +463,10 @@ library(modulr)
       Amat <- cbind(
         rep(1, n),  # sum(w)=1
         mu,         # mu'w=target
-        diag(n),    # w>=0
+        diag(n),    # w>=w_min
         -diag(n)    # w<=w_max
       )
-      bvec <- c(1, target_return, rep(0, n), rep(-w_max, n))
+      bvec <- c(1, target_return, rep(w_min, n), rep(-w_max, n))
 
       sol <- tryCatch(
         solve.QP(Dmat = Dmat, dvec = dvec, Amat = Amat, bvec = bvec, meq = 2),
@@ -484,7 +484,7 @@ library(modulr)
     # sector_assignments: vecteur de secteurs pour chaque actif
     # sector_limits: liste nommée avec max par secteur (ex: list("Technology" = 0.30))
     # --------------------------------------------------------------------------
-    solve_min_var_target_sectors <- function(mu, Sigma, target_return, w_max = 1,
+    solve_min_var_target_sectors <- function(mu, Sigma, target_return, w_max = 1, w_min = 0,
                                               sector_assignments = NULL, sector_limits = NULL) {
       n <- length(mu)
       Dmat <- Sigma
@@ -494,10 +494,10 @@ library(modulr)
       Amat <- cbind(
         rep(1, n),  # sum(w)=1
         mu,         # mu'w=target
-        diag(n),    # w>=0
+        diag(n),    # w>=w_min
         -diag(n)    # w<=w_max
       )
-      bvec <- c(1, target_return, rep(0, n), rep(-w_max, n))
+      bvec <- c(1, target_return, rep(w_min, n), rep(-w_max, n))
 
       # Ajouter contraintes sectorielles si spécifiées
       if (!is.null(sector_assignments) && !is.null(sector_limits) && length(sector_limits) > 0) {
@@ -530,18 +530,19 @@ library(modulr)
     # --------------------------------------------------------------------------
     # V12: compute_frontier_sectors : frontière avec contraintes sectorielles
     # --------------------------------------------------------------------------
-    compute_frontier_sectors <- function(mu, Sigma, rf, n_grid = 40, w_max = 1,
+    compute_frontier_sectors <- function(mu, Sigma, rf, n_grid = 40, w_max = 1, w_min = 0,
                                           sector_assignments = NULL, sector_limits = NULL) {
       Logger$log_info("Computing efficient frontier with sector constraints",
                       n_assets = length(mu),
                       n_grid = n_grid,
                       w_max = w_max,
+                      w_min = w_min,
                       n_sector_constraints = length(sector_limits))
 
       targets <- seq(min(mu), max(mu), length.out = n_grid)
 
       W <- lapply(targets, function(tr) {
-        solve_min_var_target_sectors(mu, Sigma, tr, w_max = w_max,
+        solve_min_var_target_sectors(mu, Sigma, tr, w_max = w_max, w_min = w_min,
                                       sector_assignments = sector_assignments,
                                       sector_limits = sector_limits)
       })
@@ -577,16 +578,17 @@ library(modulr)
     # --------------------------------------------------------------------------
     # compute_frontier : calcule la frontière efficiente complète
     # --------------------------------------------------------------------------
-    compute_frontier <- function(mu, Sigma, rf, n_grid = 40, w_max = 1) {
+    compute_frontier <- function(mu, Sigma, rf, n_grid = 40, w_max = 1, w_min = 0) {
       Logger$log_info("Computing efficient frontier",
                       n_assets = length(mu),
                       n_grid = n_grid,
                       w_max = w_max,
+                      w_min = w_min,
                       rf = rf)
 
       targets <- seq(min(mu), max(mu), length.out = n_grid)
 
-      W <- lapply(targets, function(tr) solve_min_var_target(mu, Sigma, tr, w_max = w_max))
+      W <- lapply(targets, function(tr) solve_min_var_target(mu, Sigma, tr, w_max = w_max, w_min = w_min))
       W <- do.call(rbind, W)
 
       ok <- apply(W, 1, function(x) all(is.finite(x)))
@@ -1059,6 +1061,7 @@ library(modulr)
         date_end = as.character(Sys.Date()),
         capital = 10000,
         rf = 0.015,
+        wmin = 0,
         wmax = 0.20,
         ngrid = 60,
         shrink_method = "constcor",

@@ -382,7 +382,14 @@ library(modulr)
             ),
             
             sliderInput(
-              "wmax", 
+              "wmin",
+              tags$span(tags$i(class = "fas fa-balance-scale-left"), " Poids min par titre"),
+              min = 0, max = 0.15, value = 0, step = 0.01
+            ),
+            tags$div(class = "form-text", "Force une allocation minimale. Ex: 0.05 = min 5% par actif."),
+
+            sliderInput(
+              "wmax",
               tags$span(tags$i(class = "fas fa-balance-scale"), " Poids max par titre"),
               min = 0.1, max = 1, value = 0.40, step = 0.05
             ),
@@ -1214,6 +1221,7 @@ library(modulr)
           if (!is.null(settings$use_aliases)) updateCheckboxInput(session, "use_aliases", value = settings$use_aliases)
           if (!is.null(settings$capital)) updateNumericInput(session, "capital", value = settings$capital)
           if (!is.null(settings$rf)) updateNumericInput(session, "rf", value = settings$rf)
+          if (!is.null(settings$wmin)) updateSliderInput(session, "wmin", value = settings$wmin)
           if (!is.null(settings$wmax)) updateSliderInput(session, "wmax", value = settings$wmax)
           if (!is.null(settings$ngrid)) updateSliderInput(session, "ngrid", value = settings$ngrid)
           if (!is.null(settings$shrink_method)) updateSelectInput(session, "shrink_method", selected = settings$shrink_method)
@@ -1250,7 +1258,8 @@ library(modulr)
         # Taux sans risque CHF
         updateNumericInput(session, "rf", value = 0.005)
 
-        # Concentration max 20%
+        # Poids min 3%, max 20%
+        updateSliderInput(session, "wmin", value = 0.03)
         updateSliderInput(session, "wmax", value = 0.20)
 
         # Robustesse Σ: corrélation constante, λ = 0.30
@@ -1292,6 +1301,7 @@ library(modulr)
           date_end = as.character(input$dates[2]),
           capital = input$capital,
           rf = input$rf,
+          wmin = input$wmin,
           wmax = input$wmax,
           ngrid = input$ngrid,
           shrink_method = input$shrink_method,
@@ -1331,6 +1341,7 @@ library(modulr)
         }
         if (!is.null(settings$capital)) updateNumericInput(session, "capital", value = settings$capital)
         if (!is.null(settings$rf)) updateNumericInput(session, "rf", value = settings$rf)
+        if (!is.null(settings$wmin)) updateSliderInput(session, "wmin", value = settings$wmin)
         if (!is.null(settings$wmax)) updateSliderInput(session, "wmax", value = settings$wmax)
         if (!is.null(settings$ngrid)) updateSliderInput(session, "ngrid", value = settings$ngrid)
         if (!is.null(settings$shrink_method)) updateSelectInput(session, "shrink_method", selected = settings$shrink_method)
@@ -1364,6 +1375,12 @@ library(modulr)
             if (length(tks) < 2) stop("Entrez au moins 2 tickers.")
             if (input$wmax < 1 / length(tks)) {
               stop(paste0("wmax trop bas. Avec ", length(tks), " titres, il faut wmax >= ", round(1 / length(tks), 3)))
+            }
+            if (input$wmin > input$wmax) {
+              stop("wmin ne peut pas dépasser wmax.")
+            }
+            if (input$wmin * length(tks) > 1) {
+              stop(paste0("wmin trop haut. Avec ", length(tks), " titres, il faut wmin <= ", round(1 / length(tks), 3)))
             }
             
             showNotification(paste0("Tickers analysés: ", paste(tks, collapse = ", ")), type = "message", duration = 4)
@@ -1446,11 +1463,11 @@ library(modulr)
             # Calculer la frontière (avec ou sans contraintes sectorielles)
             if (isTRUE(input$use_sector_constraints) && length(sector_limits) > 0) {
               f <- Core$compute_frontier_sectors(
-                est$mu, est$Sigma, rf = input$rf, n_grid = input$ngrid, w_max = input$wmax,
+                est$mu, est$Sigma, rf = input$rf, n_grid = input$ngrid, w_max = input$wmax, w_min = input$wmin,
                 sector_assignments = sector_assignments, sector_limits = sector_limits
               )
             } else {
-              f <- Core$compute_frontier(est$mu, est$Sigma, rf = input$rf, n_grid = input$ngrid, w_max = input$wmax)
+              f <- Core$compute_frontier(est$mu, est$Sigma, rf = input$rf, n_grid = input$ngrid, w_max = input$wmax, w_min = input$wmin)
             }
 
             df <- tibble::tibble(ret = f$ret, vol = f$vol, sharpe = f$sharpe)
@@ -2205,7 +2222,7 @@ library(modulr)
       # BACKTEST V10 (avec benchmarks et drawdown)
       # ========================================================================
       
-      run_walk_forward <- function(px_chf, cap0, rf, n_grid, w_max,
+      run_walk_forward <- function(px_chf, cap0, rf, n_grid, w_max, w_min = 0,
                                    train_years, rebal_months, tc_bps,
                                    pick_mode, profile_frac,
                                    shrink_method, shrink_lambda,
@@ -2274,7 +2291,7 @@ library(modulr)
             est$Sigma <- Core$shrink_covariance(est$Sigma, method = shrink_method, lambda = shrink_lambda)
           }
 
-          f <- Core$compute_frontier(est$mu, est$Sigma, rf = rf, n_grid = n_grid, w_max = w_max)
+          f <- Core$compute_frontier(est$mu, est$Sigma, rf = rf, n_grid = n_grid, w_max = w_max, w_min = w_min)
 
           if (pick_mode == "tangency") {
             j <- which.max(f$sharpe)
@@ -2414,7 +2431,7 @@ library(modulr)
         mu_lambda <- if (!is.null(input$mu_lambda)) input$mu_lambda else 0.30
 
         run_walk_forward(
-          px_chf = rv$px_chf, cap0 = cap0, rf = input$rf, n_grid = input$ngrid, w_max = input$wmax,
+          px_chf = rv$px_chf, cap0 = cap0, rf = input$rf, n_grid = input$ngrid, w_max = input$wmax, w_min = input$wmin,
           train_years = train_years, rebal_months = rebal_months, tc_bps = tc_bps,
           pick_mode = pick_mode, profile_frac = prof,
           shrink_method = shrink_method, shrink_lambda = shrink_lambda,
