@@ -5,6 +5,7 @@
 #   Rscript scripts/portfolio_monitor.R --check        # Check hebdomadaire
 #   Rscript scripts/portfolio_monitor.R --alert        # Check alerte drawdown (quotidien)
 #   Rscript scripts/portfolio_monitor.R --rebalance    # Rappel trimestriel
+#   Rscript scripts/portfolio_monitor.R --drift        # Check drift vs poids cibles
 #
 # Envoi d'email via la commande `mail` du système ou via gmailr si configuré.
 
@@ -14,15 +15,25 @@
 EMAIL_TO       <- "simonkofel@gmail.com"
 ALERT_DROP_PCT <- 10   # Alerte si un titre chute de X% sur 5 jours
 REBAL_MONTHS   <- 3    # Rappel tous les X mois
+DRIFT_THRESHOLD <- 5   # Alerte drift si un ticker depasse X% d'ecart vs cible
+PROJECT_DIR <- tryCatch({
+  file_arg <- grep("^--file=", commandArgs(FALSE), value = TRUE)
+  if (length(file_arg) > 0) {
+    normalizePath(file.path(dirname(sub("^--file=", "", file_arg[1])), ".."), mustWork = FALSE)
+  } else {
+    "/home/endreas/markowitz-shiny"
+  }
+}, error = function(e) "/home/endreas/markowitz-shiny")
+SETTINGS_FILE  <- file.path(PROJECT_DIR, "data", "user_settings.json")
 
-TICKERS <- c("V", "AAPL", "MSFT", "KO", "ABBN.SW", "NESN.SW", "NOVN.SW",
-             "JNJ", "MCD", "XOM")
+TICKERS <- c("GOOGL", "V", "AAPL", "MSFT", "KO", "ABBN.SW", "UBSG.SW",
+             "CFR.SW", "NOVN.SW", "JNJ", "MCD", "XOM")
 
 TICKER_LABELS <- c(
-  "V" = "Visa", "AAPL" = "Apple", "MSFT" = "Microsoft",
-  "KO" = "Coca-Cola", "ABBN.SW" = "ABB", "NESN.SW" = "Nestle",
-  "NOVN.SW" = "Novartis", "JNJ" = "J&J", "MCD" = "McDonald's",
-  "XOM" = "ExxonMobil"
+  "GOOGL" = "Alphabet", "V" = "Visa", "AAPL" = "Apple", "MSFT" = "Microsoft",
+  "KO" = "Coca-Cola", "ABBN.SW" = "ABB", "UBSG.SW" = "UBS",
+  "CFR.SW" = "Richemont", "NOVN.SW" = "Novartis", "JNJ" = "J&J",
+  "MCD" = "McDonald's", "XOM" = "ExxonMobil"
 )
 
 # ---------------------------------------------------------------------------
@@ -36,6 +47,7 @@ if (nzchar(user_lib) && dir.exists(path.expand(user_lib))) {
 suppressPackageStartupMessages({
   library(quantmod)
   library(xts)
+  library(jsonlite)
 })
 
 # ---------------------------------------------------------------------------
@@ -97,7 +109,7 @@ except Exception as e:
 ', body_escaped, subject_escaped, smtp_user, EMAIL_TO,
   smtp_user, smtp_pass, EMAIL_TO)
 
-  tmp <- tempfile(fileext = ".py")
+  tmp <- tempfile(tmpdir = "/tmp", fileext = ".py")
   writeLines(py_script, tmp)
   on.exit(unlink(tmp))
 
@@ -281,15 +293,179 @@ run_rebalance <- function() {
 }
 
 # ---------------------------------------------------------------------------
+# Mode: --drift (check drift vs poids cibles)
+# ---------------------------------------------------------------------------
+run_drift <- function() {
+  cat("=== Check drift portefeuille ===\n")
+
+  # Lire les settings
+  if (!file.exists(SETTINGS_FILE)) {
+    cat("[ERROR] Fichier settings introuvable:", SETTINGS_FILE, "\n")
+    return(invisible())
+  }
+
+  settings <- fromJSON(SETTINGS_FILE)
+
+  # Parser les holdings (format "TICKER:QTY:PRICE\nTICKER:QTY:PRICE")
+  if (is.null(settings$holdings) || !nzchar(settings$holdings)) {
+    cat("[WARN] Aucun holding dans user_settings.json\n")
+    return(invisible())
+  }
+
+  holdings_raw <- strsplit(trimws(settings$holdings), "\n")[[1]]
+  holdings <- data.frame(
+    ticker = character(0), qty = numeric(0), cost = numeric(0),
+    stringsAsFactors = FALSE
+  )
+  for (line in holdings_raw) {
+    parts <- strsplit(trimws(line), ":")[[1]]
+    if (length(parts) >= 2) {
+      holdings <- rbind(holdings, data.frame(
+        ticker = parts[1],
+        qty = as.numeric(parts[2]),
+        cost = if (length(parts) >= 3) as.numeric(parts[3]) else NA,
+        stringsAsFactors = FALSE
+      ))
+    }
+  }
+
+  if (nrow(holdings) == 0) {
+    cat("[WARN] Aucun holding parsable.\n")
+    return(invisible())
+  }
+
+  # Recuperer les prix actuels
+  prices <- get_prices(holdings$ticker, days = 5)
+  if (is.null(prices)) {
+    cat("[ERROR] Aucun prix recupere.\n")
+    return(invisible())
+  }
+
+  last_prices <- as.numeric(tail(prices, 1))
+  names(last_prices) <- colnames(prices)
+
+  # Calculer la valeur de marche de chaque position
+  holdings$price <- last_prices[holdings$ticker]
+  holdings$value <- holdings$qty * holdings$price
+  total_value <- sum(holdings$value, na.rm = TRUE)
+  holdings$weight_actual <- holdings$value / total_value * 100
+
+  # Lire les poids cibles depuis la derniere optimisation
+  # On utilise wmin/wmax comme reference, mais les poids cibles reels
+  # viennent de l'optimisation. Comme on n'a pas les poids exacts sauvegardes,
+  # on calcule l'equiponderation corrigee comme approximation.
+  # Pour les poids cibles exacts, il faudrait les sauvegarder dans settings.
+  # En attendant, on detecte le drift entre positions (ecart max - min).
+
+  # Lire les poids cibles
+  if (!is.null(settings$target_weights)) {
+    tw <- data.frame(
+      ticker = names(settings$target_weights),
+      target = as.numeric(unlist(settings$target_weights)),
+      stringsAsFactors = FALSE
+    )
+  } else {
+    # Fallback: equi-poids
+    n <- nrow(holdings)
+    tw <- data.frame(
+      ticker = holdings$ticker,
+      target = rep(100 / n, n),
+      stringsAsFactors = FALSE
+    )
+    cat("[INFO] Pas de poids cibles sauvegardes, utilisation equi-poids comme reference.\n")
+  }
+
+  # Merge — les tickers sans poids cible (ex: GOOGL hors optimisation) sont ignores
+  holdings <- merge(holdings, tw, by = "ticker", all.x = TRUE)
+
+  # Exclure les tickers sans poids cible
+  holdings_with_target <- holdings[!is.na(holdings$target), ]
+  holdings_no_target <- holdings[is.na(holdings$target), ]
+
+  # Recalculer les poids cibles au prorata du poids reel des tickers hors optimisation
+  # Ex: si GOOGL prend 25%, les poids cibles (qui totalisent 100%) doivent etre ramenes a 75%
+  weight_outside <- sum(holdings_no_target$weight_actual, na.rm = TRUE)
+  scale_factor <- (100 - weight_outside) / 100
+  holdings_with_target$target_adj <- holdings_with_target$target * scale_factor
+  holdings_with_target$drift <- holdings_with_target$weight_actual - holdings_with_target$target_adj
+
+  # Verifier si un ticker depasse le seuil
+  max_drift <- max(abs(holdings_with_target$drift), na.rm = TRUE)
+
+  cat(sprintf("  Valeur totale portefeuille: CHF %.2f\n", total_value))
+  if (nrow(holdings_no_target) > 0) {
+    cat(sprintf("  Tickers hors optimisation: %s\n", paste(holdings_no_target$ticker, collapse = ", ")))
+  }
+  cat(sprintf("  Drift max: %.1f%% (seuil: %d%%)\n", max_drift, DRIFT_THRESHOLD))
+
+  if (max_drift < DRIFT_THRESHOLD) {
+    cat("[OK] Drift sous controle — pas de rebalancement necessaire.\n")
+    return(invisible())
+  }
+
+  # ALERTE DRIFT
+  lines <- c(
+    "*** ALERTE MARKOWITZ — DRIFT DETECTE ***",
+    paste0("Date: ", Sys.Date()),
+    paste0("Seuil: ", DRIFT_THRESHOLD, "% | Drift max: ", sprintf("%.1f%%", max_drift)),
+    sprintf("Valeur totale: CHF %.0f", total_value),
+    "",
+    sprintf("%-12s %8s %8s %8s %10s", "Ticker", "Actuel%", "Cible%", "Drift%", "Action"),
+    paste(rep("-", 52), collapse = "")
+  )
+
+  if (nrow(holdings_no_target) > 0) {
+    lines <- c(lines, sprintf("  (Hors optimisation: %s)",
+                                paste(holdings_no_target$ticker, collapse = ", ")))
+  }
+
+  # Trier par drift absolu decroissant
+  holdings_with_target <- holdings_with_target[order(-abs(holdings_with_target$drift)), ]
+
+  for (i in seq_len(nrow(holdings_with_target))) {
+    h <- holdings_with_target[i, ]
+    drift_val <- h$drift
+    if (abs(drift_val) >= 1) {
+      action <- if (drift_val > 0) "VENDRE" else "ACHETER"
+      montant <- abs(drift_val) / 100 * total_value
+      action_str <- sprintf("%s ~CHF%.0f", action, montant)
+    } else {
+      action_str <- "OK"
+    }
+    flag <- if (abs(drift_val) >= DRIFT_THRESHOLD) " ***" else ""
+    lines <- c(lines, sprintf("%-12s %7.1f%% %7.1f%% %+7.1f%% %10s%s",
+                                label(h$ticker), h$weight_actual, h$target_adj,
+                                drift_val, action_str, flag))
+  }
+
+  lines <- c(lines, "",
+    "ACTION RECOMMANDEE :",
+    "  1. Lancer l'app Markowitz (Rscript scripts/run_local.R)",
+    "  2. Relancer l'optimisation avec les prix actuels",
+    "  3. Onglet Holdings > verifier les trades proposes",
+    "  4. Passer les ordres sur Swissquote",
+    "",
+    "Genere automatiquement par Markowitz Portfolio Monitor")
+
+  body <- paste(lines, collapse = "\n")
+  cat(body, "\n\n")
+
+  subject <- sprintf("[ALERTE Markowitz] Drift detecte (%.1f%%) — %s",
+                     max_drift, format(Sys.Date(), "%d/%m/%Y"))
+  send_email(subject, body)
+}
+
+# ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
 args <- commandArgs(trailingOnly = TRUE)
 
 if (length(args) == 0) {
-  cat("Usage: Rscript scripts/portfolio_monitor.R [--check|--alert|--rebalance]\n")
+  cat("Usage: Rscript scripts/portfolio_monitor.R [--check|--alert|--rebalance|--drift]\n")
   cat("  --check      Recap hebdomadaire (lundi)\n")
   cat("  --alert      Alerte drawdown (quotidien)\n")
   cat("  --rebalance  Rappel trimestriel\n")
+  cat("  --drift      Check drift vs poids cibles (hebdo)\n")
   quit(status = 1)
 }
 
@@ -297,6 +473,7 @@ switch(args[1],
   "--check"     = run_check(),
   "--alert"     = run_alert(),
   "--rebalance" = run_rebalance(),
+  "--drift"     = run_drift(),
   {
     cat("Option inconnue:", args[1], "\n")
     quit(status = 1)

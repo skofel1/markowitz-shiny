@@ -1318,6 +1318,16 @@ library(modulr)
           holdings = input$holdings_input
         )
 
+        # Sauvegarder les poids cibles du portefeuille selectionne (pour drift monitor)
+        if (!is.null(rv$W) && !is.null(rv$tickers) && !is.null(input$pick_idx)) {
+          sel_i <- clamp_idx(input$pick_idx, nrow(rv$W))
+          w <- as.numeric(rv$W[sel_i, ])
+          settings$target_weights <- setNames(
+            as.list(round(w * 100, 2)),
+            rv$tickers
+          )
+        }
+
         if (Core$save_settings(settings)) {
           showNotification("Paramètres sauvegardés avec succès!", type = "message", duration = 3)
         } else {
