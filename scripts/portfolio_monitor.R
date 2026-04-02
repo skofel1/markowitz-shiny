@@ -53,29 +53,14 @@ suppressPackageStartupMessages({
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
-send_email <- function(subject, body) {
-  # Envoie un email via Gmail SMTP (Python3 smtplib)
-  # Necessite le fichier ~/.markowitz_smtp avec:
-  #   SMTP_USER=ton.email@gmail.com
-  #   SMTP_PASS=ton_app_password
-  #
-  # Pour creer un App Password Gmail:
-  #   1. https://myaccount.google.com/security
-  #   2. Verification en 2 etapes (activer si pas fait)
-  #   3. Mots de passe d'application -> Generer
-  #   4. Copier le mot de passe dans ~/.markowitz_smtp
-
+send_email <- function(subject, body_html) {
   smtp_file <- path.expand("~/.markowitz_smtp")
 
   if (!file.exists(smtp_file)) {
-    cat("[WARN] Fichier", smtp_file, "introuvable.\n")
-    cat("[WARN] Email NON envoye. Contenu qui aurait ete envoye:\n")
-    cat("  Sujet:", subject, "\n")
-    cat(body, "\n")
+    cat("[WARN] Fichier", smtp_file, "introuvable. Email NON envoye.\n")
     return(invisible(FALSE))
   }
 
-  # Lire les credentials
   creds <- readLines(smtp_file, warn = FALSE)
   smtp_user <- sub("^SMTP_USER=", "", grep("^SMTP_USER=", creds, value = TRUE))
   smtp_pass <- sub("^SMTP_PASS=", "", grep("^SMTP_PASS=", creds, value = TRUE))
@@ -85,17 +70,20 @@ send_email <- function(subject, body) {
     return(invisible(FALSE))
   }
 
-  # Echapper les caracteres speciaux pour Python
-  body_escaped <- gsub("\\\\", "\\\\\\\\", body)
-  body_escaped <- gsub('"', '\\\\"', body_escaped)
-  subject_escaped <- gsub('"', '\\\\"', subject)
+  # Ecrire le HTML dans un fichier temporaire pour eviter les problemes d'echappement
+  tmp_html <- tempfile(tmpdir = "/tmp", fileext = ".html")
+  writeLines(body_html, tmp_html)
 
+  tmp_py <- tempfile(tmpdir = "/tmp", fileext = ".py")
   py_script <- sprintf('
 import smtplib
 from email.mime.text import MIMEText
 
-msg = MIMEText("""%s""")
-msg["Subject"] = "%s"
+with open("%s", "r") as f:
+    html = f.read()
+
+msg = MIMEText(html, "html")
+msg["Subject"] = """%s"""
 msg["From"] = "%s"
 msg["To"] = "%s"
 
@@ -106,14 +94,71 @@ try:
     print("[OK] Email envoye a %s")
 except Exception as e:
     print(f"[ERROR] Echec envoi: {e}")
-', body_escaped, subject_escaped, smtp_user, EMAIL_TO,
-  smtp_user, smtp_pass, EMAIL_TO)
+', tmp_html, subject, smtp_user, EMAIL_TO, smtp_user, smtp_pass, EMAIL_TO)
 
-  tmp <- tempfile(tmpdir = "/tmp", fileext = ".py")
-  writeLines(py_script, tmp)
-  on.exit(unlink(tmp))
+  writeLines(py_script, tmp_py)
+  on.exit({ unlink(tmp_py); unlink(tmp_html) })
+  system(paste("python3", tmp_py))
+}
 
-  system(paste("python3", tmp))
+# ---------------------------------------------------------------------------
+# HTML template
+# ---------------------------------------------------------------------------
+html_wrap <- function(title, icon, content, accent_color = "#2C3E50") {
+  sprintf('<!DOCTYPE html>
+<html><head><meta charset="utf-8"></head>
+<body style="margin:0;padding:0;background:#f4f5f7;font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Helvetica,Arial,sans-serif;">
+<table width="100%%" cellpadding="0" cellspacing="0" style="background:#f4f5f7;padding:24px 0;">
+<tr><td align="center">
+<table width="600" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 2px 12px rgba(0,0,0,0.08);">
+  <tr><td style="background:linear-gradient(135deg,%s 0%%,#34495E 100%%);padding:28px 32px;">
+    <span style="font-size:28px;">%s</span>
+    <span style="color:#ffffff;font-size:22px;font-weight:700;margin-left:12px;vertical-align:middle;">%s</span>
+    <br><span style="color:rgba(255,255,255,0.7);font-size:13px;">%s</span>
+  </td></tr>
+  <tr><td style="padding:28px 32px;">
+    %s
+  </td></tr>
+  <tr><td style="padding:16px 32px;background:#f8f9fa;border-top:1px solid #e9ecef;">
+    <span style="color:#95a5a6;font-size:11px;">Markowitz Portfolio Monitor &mdash; Automatique</span>
+  </td></tr>
+</table>
+</td></tr></table>
+</body></html>', accent_color, icon, title, format(Sys.Date(), "%%d/%%m/%%Y"), content)
+}
+
+html_table <- function(headers, rows, highlight_col = NULL, highlight_fn = NULL) {
+  th_style <- "padding:10px 14px;text-align:left;font-size:12px;font-weight:600;color:#95a5a6;text-transform:uppercase;letter-spacing:0.5px;border-bottom:2px solid #e9ecef;"
+  td_style <- "padding:10px 14px;font-size:14px;border-bottom:1px solid #f0f0f0;"
+
+  header_html <- paste0("<tr>", paste0(sprintf('<th style="%s">%s</th>', th_style, headers), collapse = ""), "</tr>")
+
+  row_htmls <- sapply(seq_len(nrow(rows)), function(i) {
+    bg <- if (i %% 2 == 0) "background:#fafbfc;" else ""
+    cells <- sapply(seq_len(ncol(rows)), function(j) {
+      val <- as.character(rows[i, j])
+      style <- paste0(td_style, bg)
+      if (!is.null(highlight_col) && !is.null(highlight_fn) && j == highlight_col) {
+        style <- paste0(style, highlight_fn(val))
+      }
+      sprintf('<td style="%s">%s</td>', style, val)
+    })
+    paste0("<tr>", paste(cells, collapse = ""), "</tr>")
+  })
+
+  sprintf('<table width="100%%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;margin:16px 0;">%s%s</table>',
+          header_html, paste(row_htmls, collapse = ""))
+}
+
+html_badge <- function(text, color = "#2C3E50") {
+  sprintf('<span style="display:inline-block;padding:3px 10px;border-radius:12px;font-size:12px;font-weight:600;color:#fff;background:%s;">%s</span>', color, text)
+}
+
+html_kpi <- function(label, value, color = "#2C3E50") {
+  sprintf('<div style="display:inline-block;text-align:center;padding:12px 20px;margin:4px;background:#f8f9fa;border-radius:8px;min-width:80px;">
+    <div style="font-size:22px;font-weight:700;color:%s;">%s</div>
+    <div style="font-size:11px;color:#95a5a6;margin-top:4px;">%s</div>
+  </div>', color, value, label)
 }
 
 get_prices <- function(tickers, days = 30) {
@@ -156,41 +201,58 @@ run_check <- function() {
   last <- as.numeric(tail(prices, 1))
   prev <- as.numeric(tail(prices, 2)[1, ])
   names(last) <- names(prev) <- colnames(prices)
-
   weekly_ret <- (last - prev) / prev
 
-  # Build email body
-  lines <- c(
-    "MARKOWITZ PORTFOLIO — Recap Hebdomadaire",
-    paste0("Date: ", Sys.Date()),
-    paste(rep("-", 55), collapse = ""),
-    "",
-    sprintf("%-12s %10s %10s", "Ticker", "Prix", "Var 1 sem"),
-    paste(rep("-", 35), collapse = "")
+  # Construire le tableau
+  tbl <- data.frame(
+    Ticker = sapply(colnames(prices), label),
+    Prix = sprintf("%.2f", last),
+    Variation = format_pct(weekly_ret),
+    stringsAsFactors = FALSE
   )
 
-  for (tk in colnames(prices)) {
-    lines <- c(lines, sprintf("%-12s %10.2f %10s",
-                               label(tk), last[tk], format_pct(weekly_ret[tk])))
+  color_fn <- function(val) {
+    v <- as.numeric(gsub("[%+]", "", val))
+    if (!is.finite(v)) return("")
+    if (v < -3) return("color:#e74c3c;font-weight:700;")
+    if (v < 0) return("color:#e67e22;")
+    if (v > 3) return("color:#27ae60;font-weight:700;")
+    "color:#27ae60;"
   }
+
+  table_html <- html_table(c("Titre", "Prix", "Var. 1 sem."), tbl, highlight_col = 3, highlight_fn = color_fn)
 
   # Alertes
   drops <- weekly_ret[weekly_ret < -0.05]
+  alert_html <- ""
   if (length(drops) > 0) {
-    lines <- c(lines, "", "*** ATTENTION — Baisses significatives cette semaine ***")
-    for (tk in names(drops)) {
-      lines <- c(lines, sprintf("  %s : %s", label(tk), format_pct(drops[tk])))
-    }
+    items <- paste(sapply(names(drops), function(tk) {
+      sprintf('<li><strong>%s</strong> : %s</li>', label(tk), format_pct(drops[tk]))
+    }), collapse = "")
+    alert_html <- sprintf('
+      <div style="margin:16px 0;padding:14px 18px;background:#fdf0ed;border-left:4px solid #e74c3c;border-radius:6px;">
+        <strong style="color:#e74c3c;">Baisses significatives cette semaine</strong>
+        <ul style="margin:8px 0 0 0;padding-left:20px;">%s</ul>
+      </div>', items)
   }
 
-  lines <- c(lines, "", paste(rep("-", 55), collapse = ""),
-             "Genere automatiquement par Markowitz Portfolio Monitor")
+  # KPIs
+  avg_ret <- mean(weekly_ret, na.rm = TRUE)
+  best_tk <- names(which.max(weekly_ret))
+  worst_tk <- names(which.min(weekly_ret))
+  kpis <- paste0(
+    '<div style="text-align:center;margin:16px 0;">',
+    html_kpi("Perf. moyenne", format_pct(avg_ret), if (avg_ret >= 0) "#27ae60" else "#e74c3c"),
+    html_kpi("Meilleur", sprintf("%s %s", label(best_tk), format_pct(weekly_ret[best_tk])), "#27ae60"),
+    html_kpi("Pire", sprintf("%s %s", label(worst_tk), format_pct(weekly_ret[worst_tk])), "#e74c3c"),
+    '</div>')
 
-  body <- paste(lines, collapse = "\n")
-  cat(body, "\n\n")
+  content <- paste0(kpis, table_html, alert_html)
+  body_html <- html_wrap("Recap Hebdomadaire", "&#128200;", content)
 
+  cat("[HTML] Rapport genere.\n")
   subject <- sprintf("[Markowitz] Recap hebdo — %s", format(Sys.Date(), "%d/%m/%Y"))
-  send_email(subject, body)
+  send_email(subject, body_html)
 }
 
 # ---------------------------------------------------------------------------
@@ -217,7 +279,6 @@ run_alert <- function() {
 
   ret_5d <- (last - five_ago) / five_ago
   threshold <- -ALERT_DROP_PCT / 100
-
   alerts <- ret_5d[ret_5d < threshold]
 
   if (length(alerts) == 0) {
@@ -225,37 +286,42 @@ run_alert <- function() {
     return(invisible())
   }
 
-  # ALERTE !
-  lines <- c(
-    "*** ALERTE MARKOWITZ — CHUTE SIGNIFICATIVE ***",
-    paste0("Date: ", Sys.Date()),
-    paste0("Seuil: -", ALERT_DROP_PCT, "% sur 5 jours de bourse"),
-    "",
-    "Titres en alerte :"
-  )
+  # Construire l'alerte HTML
+  alert_items <- paste(sapply(names(alerts), function(tk) {
+    sprintf('
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:12px 16px;margin:8px 0;background:#fdf0ed;border-radius:8px;border-left:4px solid #e74c3c;">
+        <div>
+          <strong style="font-size:15px;">%s</strong>
+          <span style="color:#95a5a6;margin-left:8px;">%s</span>
+        </div>
+        <div style="text-align:right;">
+          <span style="font-size:20px;font-weight:700;color:#e74c3c;">%s</span>
+          <br><span style="font-size:12px;color:#95a5a6;">Prix: %.2f</span>
+        </div>
+      </div>', label(tk), tk, format_pct(alerts[tk]), last[tk])
+  }), collapse = "")
 
-  for (tk in names(alerts)) {
-    lines <- c(lines, sprintf(
-      "  %s (%s) : %s sur 5 jours  (prix: %.2f)",
-      label(tk), tk, format_pct(alerts[tk]), last[tk]
-    ))
-  }
+  actions <- '
+    <div style="margin:20px 0;padding:16px 20px;background:#eef6ff;border-radius:8px;border-left:4px solid #3498db;">
+      <strong style="color:#2C3E50;">Actions recommandees</strong>
+      <ol style="margin:8px 0 0 0;padding-left:20px;color:#34495e;">
+        <li>Lancer l\'app : <code>Rscript scripts/run_local.R</code></li>
+        <li>Verifier le drift dans l\'onglet Holdings</li>
+        <li>Si drift &gt; 5%, rebalancer le portefeuille</li>
+        <li>Si la baisse est fondamentale, envisager un remplacement</li>
+      </ol>
+    </div>'
 
-  lines <- c(lines, "",
-    "ACTION RECOMMANDEE :",
-    "  1. Lancer l'app Markowitz (Rscript scripts/run_local.R)",
-    "  2. Verifier le drift dans l'onglet Holdings",
-    "  3. Si drift > 5%, rebalancer le portefeuille",
-    "  4. Si la baisse est fondamentale, envisager un remplacement",
-    "",
-    "Genere automatiquement par Markowitz Portfolio Monitor")
+  content <- paste0(
+    sprintf('<p style="font-size:14px;color:#666;">Seuil : <strong>-%d%%</strong> sur 5 jours de bourse</p>', ALERT_DROP_PCT),
+    alert_items, actions)
 
-  body <- paste(lines, collapse = "\n")
-  cat(body, "\n\n")
+  body_html <- html_wrap("Alerte Drawdown", "&#128680;", content, "#c0392b")
 
+  cat("[HTML] Alerte generee pour:", paste(sapply(names(alerts), label), collapse = ", "), "\n")
   subject <- sprintf("[ALERTE Markowitz] Chute detectee — %s",
                      paste(sapply(names(alerts), label), collapse = ", "))
-  send_email(subject, body)
+  send_email(subject, body_html)
 }
 
 # ---------------------------------------------------------------------------
@@ -264,32 +330,46 @@ run_alert <- function() {
 run_rebalance <- function() {
   cat("=== Rappel de rebalancement trimestriel ===\n")
 
-  lines <- c(
-    "MARKOWITZ PORTFOLIO — Rappel de Rebalancement",
-    paste0("Date: ", Sys.Date()),
-    paste(rep("-", 55), collapse = ""),
-    "",
-    "Il est temps de re-optimiser ton portefeuille !",
-    "",
-    "Etapes :",
-    "  1. Lancer l'app : Rscript scripts/run_local.R",
-    "  2. Charger tes parametres sauvegardes (bouton Charger)",
-    "  3. Relancer l'optimisation (les prix/correlations ont change)",
-    "  4. Comparer les nouveaux poids avec tes positions actuelles",
-    "  5. Si drift > 5%, executer les ordres de rebalancement",
-    "  6. Sauvegarder les nouveaux parametres",
-    "",
-    sprintf("Prochain rappel : %s", format(Sys.Date() + 30 * REBAL_MONTHS, "%d/%m/%Y")),
-    "",
-    paste(rep("-", 55), collapse = ""),
-    "Genere automatiquement par Markowitz Portfolio Monitor"
-  )
+  steps <- '
+    <div style="margin:16px 0;">
+      <div style="display:flex;align-items:center;padding:12px 0;border-bottom:1px solid #f0f0f0;">
+        <span style="display:inline-block;width:32px;height:32px;line-height:32px;text-align:center;border-radius:50%%;background:#2C3E50;color:#fff;font-weight:700;font-size:14px;margin-right:14px;">1</span>
+        <span>Lancer l\'app : <code style="background:#f0f0f0;padding:2px 6px;border-radius:4px;">Rscript scripts/run_local.R</code></span>
+      </div>
+      <div style="display:flex;align-items:center;padding:12px 0;border-bottom:1px solid #f0f0f0;">
+        <span style="display:inline-block;width:32px;height:32px;line-height:32px;text-align:center;border-radius:50%%;background:#2C3E50;color:#fff;font-weight:700;font-size:14px;margin-right:14px;">2</span>
+        <span>Charger tes parametres sauvegardes (bouton <strong>Charger</strong>)</span>
+      </div>
+      <div style="display:flex;align-items:center;padding:12px 0;border-bottom:1px solid #f0f0f0;">
+        <span style="display:inline-block;width:32px;height:32px;line-height:32px;text-align:center;border-radius:50%%;background:#2C3E50;color:#fff;font-weight:700;font-size:14px;margin-right:14px;">3</span>
+        <span>Relancer l\'optimisation (prix et correlations ont change)</span>
+      </div>
+      <div style="display:flex;align-items:center;padding:12px 0;border-bottom:1px solid #f0f0f0;">
+        <span style="display:inline-block;width:32px;height:32px;line-height:32px;text-align:center;border-radius:50%%;background:#2C3E50;color:#fff;font-weight:700;font-size:14px;margin-right:14px;">4</span>
+        <span>Onglet <strong>Holdings</strong> : comparer poids actuels vs cibles</span>
+      </div>
+      <div style="display:flex;align-items:center;padding:12px 0;border-bottom:1px solid #f0f0f0;">
+        <span style="display:inline-block;width:32px;height:32px;line-height:32px;text-align:center;border-radius:50%%;background:#2C3E50;color:#fff;font-weight:700;font-size:14px;margin-right:14px;">5</span>
+        <span>Si drift &gt; 5%%, executer les ordres sur <strong>Swissquote</strong></span>
+      </div>
+      <div style="display:flex;align-items:center;padding:12px 0;">
+        <span style="display:inline-block;width:32px;height:32px;line-height:32px;text-align:center;border-radius:50%%;background:#27ae60;color:#fff;font-weight:700;font-size:14px;margin-right:14px;">6</span>
+        <span>Sauvegarder les nouveaux parametres</span>
+      </div>
+    </div>'
 
-  body <- paste(lines, collapse = "\n")
-  cat(body, "\n\n")
+  next_date <- format(Sys.Date() + 30 * REBAL_MONTHS, "%d/%m/%Y")
+  footer <- sprintf('<p style="margin-top:16px;padding:12px 16px;background:#f0faf0;border-radius:8px;font-size:13px;color:#27ae60;">Prochain rappel : <strong>%s</strong></p>', next_date)
 
+  content <- paste0(
+    '<p style="font-size:16px;color:#2C3E50;">Il est temps de re-optimiser ton portefeuille !</p>',
+    steps, footer)
+
+  body_html <- html_wrap("Rebalancement Trimestriel", "&#128197;", content, "#27ae60")
+
+  cat("[HTML] Rappel rebalancement genere.\n")
   subject <- sprintf("[Markowitz] Rappel rebalancement — %s", format(Sys.Date(), "%d/%m/%Y"))
-  send_email(subject, body)
+  send_email(subject, body_html)
 }
 
 # ---------------------------------------------------------------------------
@@ -403,56 +483,70 @@ run_drift <- function() {
     return(invisible())
   }
 
-  # ALERTE DRIFT
-  lines <- c(
-    "*** ALERTE MARKOWITZ — DRIFT DETECTE ***",
-    paste0("Date: ", Sys.Date()),
-    paste0("Seuil: ", DRIFT_THRESHOLD, "% | Drift max: ", sprintf("%.1f%%", max_drift)),
-    sprintf("Valeur totale: CHF %.0f", total_value),
-    "",
-    sprintf("%-12s %8s %8s %8s %10s", "Ticker", "Actuel%", "Cible%", "Drift%", "Action"),
-    paste(rep("-", 52), collapse = "")
-  )
+  # ALERTE DRIFT — HTML
+  # KPIs
+  kpis <- paste0(
+    '<div style="text-align:center;margin:16px 0;">',
+    html_kpi("Valeur totale", sprintf("CHF %.0f", total_value), "#2C3E50"),
+    html_kpi("Drift max", sprintf("%.1f%%", max_drift), "#e74c3c"),
+    html_kpi("Seuil", sprintf("%d%%", DRIFT_THRESHOLD), "#95a5a6"),
+    '</div>')
 
+  # Note hors optimisation
+  note_html <- ""
   if (nrow(holdings_no_target) > 0) {
-    lines <- c(lines, sprintf("  (Hors optimisation: %s)",
-                                paste(holdings_no_target$ticker, collapse = ", ")))
+    note_html <- sprintf('<p style="font-size:12px;color:#95a5a6;margin:8px 0;">Hors optimisation : %s</p>',
+                          paste(holdings_no_target$ticker, collapse = ", "))
   }
 
   # Trier par drift absolu decroissant
   holdings_with_target <- holdings_with_target[order(-abs(holdings_with_target$drift)), ]
 
-  for (i in seq_len(nrow(holdings_with_target))) {
-    h <- holdings_with_target[i, ]
-    drift_val <- h$drift
-    if (abs(drift_val) >= 1) {
-      action <- if (drift_val > 0) "VENDRE" else "ACHETER"
-      montant <- abs(drift_val) / 100 * total_value
-      action_str <- sprintf("%s ~CHF%.0f", action, montant)
-    } else {
-      action_str <- "OK"
-    }
-    flag <- if (abs(drift_val) >= DRIFT_THRESHOLD) " ***" else ""
-    lines <- c(lines, sprintf("%-12s %7.1f%% %7.1f%% %+7.1f%% %10s%s",
-                                label(h$ticker), h$weight_actual, h$target_adj,
-                                drift_val, action_str, flag))
+  # Construire le tableau
+  tbl <- data.frame(
+    Ticker = sapply(holdings_with_target$ticker, label),
+    Actuel = sprintf("%.1f%%", holdings_with_target$weight_actual),
+    Cible = sprintf("%.1f%%", holdings_with_target$target_adj),
+    Drift = sprintf("%+.1f%%", holdings_with_target$drift),
+    Action = sapply(seq_len(nrow(holdings_with_target)), function(i) {
+      d <- holdings_with_target$drift[i]
+      if (abs(d) >= 1) {
+        act <- if (d > 0) "VENDRE" else "ACHETER"
+        montant <- abs(d) / 100 * total_value
+        sprintf("%s ~CHF %.0f", act, montant)
+      } else { "OK" }
+    }),
+    stringsAsFactors = FALSE
+  )
+
+  color_fn <- function(val) {
+    v <- as.numeric(gsub("[%+]", "", val))
+    if (!is.finite(v)) return("")
+    if (abs(v) >= DRIFT_THRESHOLD) return("color:#e74c3c;font-weight:700;")
+    if (abs(v) >= 2) return("color:#e67e22;")
+    ""
   }
 
-  lines <- c(lines, "",
-    "ACTION RECOMMANDEE :",
-    "  1. Lancer l'app Markowitz (Rscript scripts/run_local.R)",
-    "  2. Relancer l'optimisation avec les prix actuels",
-    "  3. Onglet Holdings > verifier les trades proposes",
-    "  4. Passer les ordres sur Swissquote",
-    "",
-    "Genere automatiquement par Markowitz Portfolio Monitor")
+  table_html <- html_table(c("Titre", "Actuel", "Cible", "Drift", "Action"), tbl, highlight_col = 4, highlight_fn = color_fn)
 
-  body <- paste(lines, collapse = "\n")
-  cat(body, "\n\n")
+  actions <- '
+    <div style="margin:20px 0;padding:16px 20px;background:#eef6ff;border-radius:8px;border-left:4px solid #3498db;">
+      <strong style="color:#2C3E50;">Actions recommandees</strong>
+      <ol style="margin:8px 0 0 0;padding-left:20px;color:#34495e;">
+        <li>Lancer l\'app : <code style="background:#f0f0f0;padding:2px 6px;border-radius:4px;">Rscript scripts/run_local.R</code></li>
+        <li>Relancer l\'optimisation avec les prix actuels</li>
+        <li>Onglet Holdings &gt; verifier les trades proposes</li>
+        <li>Passer les ordres sur Swissquote</li>
+      </ol>
+    </div>'
 
+  content <- paste0(kpis, note_html, table_html, actions)
+  body_html <- html_wrap("Alerte Drift", "&#9888;&#65039;", content, "#e67e22")
+
+  cat("[HTML] Alerte drift generee.\n")
   subject <- sprintf("[ALERTE Markowitz] Drift detecte (%.1f%%) — %s",
                      max_drift, format(Sys.Date(), "%d/%m/%Y"))
-  send_email(subject, body)
+  send_email(subject, body_html)
 }
 
 # ---------------------------------------------------------------------------
